@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: bcc-smartconnect-api
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: DATABASE_URL
+        sync: false   # Set this manually in Render dashboard — paste your Neon connection string
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: ALLOWED_ORIGINS
+        value: https://bcc-smartconnect.netlify.app,https://bcc-smartconnect.netlify.app
+      - key: FIREBASE_SERVICE_ACCOUNT
+        sync: false   # Paste Firebase service account JSON here (optional — for push notifications)
