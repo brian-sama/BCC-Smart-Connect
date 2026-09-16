@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../constants/bcc_colors.dart';
 import '../models/incident_model.dart';
+import 'auth_screen.dart';
+import '../services/supabase_service.dart';
 import '../services/storage_service.dart';
 import '../widgets/emergency_sos_dialog.dart';
 import '../widgets/report_fault_modal.dart';
@@ -19,14 +21,44 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isBalanceVisible = true;
   List<IncidentModel> _reports = [];
   bool _isLoading = true;
+  String _userName = 'Bulawayo Citizen';
+  bool _isGuest = true;
 
   @override
   void initState() {
     super.initState();
     _loadReports();
+    _loadUser();
+  }
+
+  Future<void> _loadUser() async {
+    final user = await BccApiService.getSavedUser();
+    if (user != null && mounted) {
+      final first = user['first_name']?.toString() ?? '';
+      final last = user['last_name']?.toString() ?? '';
+      setState(() {
+        _userName = (first.isNotEmpty || last.isNotEmpty)
+            ? '$first $last'.trim()
+            : 'Bulawayo Citizen';
+        _isGuest = user['is_guest'] == true;
+      });
+    }
   }
 
   Future<void> _loadReports() async {
+    setState(() => _isLoading = true);
+    try {
+      // Try to load from backend (my reports for authenticated, or seed from storage)
+      final list = await BccApiService.fetchMyReports();
+      if (mounted) {
+        setState(() {
+          _reports = list.isNotEmpty ? list : _reports;
+          _isLoading = false;
+        });
+        return;
+      }
+    } catch (_) {}
+    // Fallback to local storage / seed
     final list = await StorageService.getReportsOrSeed();
     if (mounted) {
       setState(() {
@@ -50,10 +82,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _openEmergencySos() {
-    showDialog(
-      context: context,
-      builder: (ctx) => const EmergencySosDialog(),
-    );
+    showDialog(context: context, builder: (ctx) => const EmergencySosDialog());
   }
 
   void _openTrackModal([String? initialRef]) {
@@ -134,7 +163,9 @@ class _HomeScreenState extends State<HomeScreen> {
   // Top Hero Header (Deep Forest Green with curved bottom)
   // ---------------------------------------------------------------------------
   Widget _buildHeroHeader() {
-    final activeCount = _reports.where((r) => r.status != 'Resolved' && r.status != 'Closed').length;
+    final activeCount = _reports
+        .where((r) => r.status != 'Resolved' && r.status != 'Closed')
+        .length;
 
     return Container(
       decoration: const BoxDecoration(
@@ -171,12 +202,16 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 child: const ClipOval(
                   child: Center(
-                    child: Icon(Icons.person_rounded, color: BccColors.accentLime, size: 26),
+                    child: Icon(
+                      Icons.person_rounded,
+                      color: BccColors.accentLime,
+                      size: 26,
+                    ),
                   ),
                 ),
               ),
               const SizedBox(width: 12),
-              const Column(
+              Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
@@ -188,7 +223,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   Text(
-                    'Bulawayo Citizen',
+                    _userName,
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 16,
@@ -210,7 +245,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Stack(
                   alignment: Alignment.center,
                   children: [
-                    const Icon(Icons.notifications_none_rounded, color: Colors.white, size: 22),
+                    const Icon(
+                      Icons.notifications_none_rounded,
+                      color: Colors.white,
+                      size: 22,
+                    ),
                     Positioned(
                       top: 10,
                       right: 12,
@@ -259,9 +298,12 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(width: 10),
               GestureDetector(
-                onTap: () => setState(() => _isBalanceVisible = !_isBalanceVisible),
+                onTap: () =>
+                    setState(() => _isBalanceVisible = !_isBalanceVisible),
                 child: Icon(
-                  _isBalanceVisible ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                  _isBalanceVisible
+                      ? Icons.visibility_outlined
+                      : Icons.visibility_off_outlined,
                   color: BccColors.textLime,
                   size: 20,
                 ),
@@ -351,18 +393,31 @@ class _HomeScreenState extends State<HomeScreen> {
                         onTap: () => _openTrackModal(),
                         borderRadius: BorderRadius.circular(20),
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
                           decoration: BoxDecoration(
-                            border: Border.all(color: Colors.white.withOpacity(0.3)),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.3),
+                            ),
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child: const Row(
                             children: [
-                              Icon(Icons.search_rounded, color: Colors.white, size: 14),
+                              Icon(
+                                Icons.search_rounded,
+                                color: Colors.white,
+                                size: 14,
+                              ),
                               SizedBox(width: 4),
                               Text(
                                 'Track Code',
-                                style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                             ],
                           ),
@@ -389,7 +444,9 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
           decoration: BoxDecoration(
-            color: isSelected ? BccColors.accentLime : Colors.white.withOpacity(0.12),
+            color: isSelected
+                ? BccColors.accentLime
+                : Colors.white.withOpacity(0.12),
             borderRadius: BorderRadius.circular(18),
           ),
           child: Text(
@@ -480,10 +537,7 @@ class _HomeScreenState extends State<HomeScreen> {
             Container(
               width: 52,
               height: 52,
-              decoration: BoxDecoration(
-                color: bgColor,
-                shape: BoxShape.circle,
-              ),
+              decoration: BoxDecoration(color: bgColor, shape: BoxShape.circle),
               child: Icon(icon, color: iconColor, size: 24),
             ),
             const SizedBox(height: 8),
@@ -497,10 +551,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             Text(
               sublabel,
-              style: const TextStyle(
-                fontSize: 10,
-                color: BccColors.textMuted,
-              ),
+              style: const TextStyle(fontSize: 10, color: BccColors.textMuted),
             ),
           ],
         ),
@@ -642,10 +693,7 @@ class _HomeScreenState extends State<HomeScreen> {
             Container(
               width: 46,
               height: 46,
-              decoration: BoxDecoration(
-                color: iconBg,
-                shape: BoxShape.circle,
-              ),
+              decoration: BoxDecoration(color: iconBg, shape: BoxShape.circle),
               child: Icon(iconData, color: iconColor, size: 22),
             ),
             const SizedBox(width: 14),
@@ -756,7 +804,12 @@ class _HomeScreenState extends State<HomeScreen> {
           _buildNavItem(icon: Icons.home_rounded, label: 'Home', index: 0),
 
           // 2: My Reports
-          _buildNavItem(icon: Icons.assignment_outlined, label: 'Reports', index: 1, onTap: () => _openTrackModal()),
+          _buildNavItem(
+            icon: Icons.assignment_outlined,
+            label: 'Reports',
+            index: 1,
+            onTap: () => _openTrackModal(),
+          ),
 
           // 3: Center Raised Action Button (Lime circle with airplane/report icon)
           GestureDetector(
@@ -784,10 +837,20 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
 
           // 4: Notices / Bulletins
-          _buildNavItem(icon: Icons.campaign_outlined, label: 'Bulletins', index: 2, onTap: _showBulletinsDialog),
+          _buildNavItem(
+            icon: Icons.campaign_outlined,
+            label: 'Bulletins',
+            index: 2,
+            onTap: _showBulletinsDialog,
+          ),
 
           // 5: Profile / Info
-          _buildNavItem(icon: Icons.person_outline_rounded, label: 'Profile', index: 3, onTap: _showProfileDialog),
+          _buildNavItem(
+            icon: Icons.person_outline_rounded,
+            label: 'Profile',
+            index: 3,
+            onTap: _showProfileDialog,
+          ),
         ],
       ),
     );
@@ -813,7 +876,9 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             Icon(
               icon,
-              color: isSelected ? BccColors.accentLime : Colors.white.withOpacity(0.6),
+              color: isSelected
+                  ? BccColors.accentLime
+                  : Colors.white.withOpacity(0.6),
               size: 22,
             ),
             const SizedBox(height: 3),
@@ -822,7 +887,9 @@ class _HomeScreenState extends State<HomeScreen> {
               style: TextStyle(
                 fontSize: 10,
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                color: isSelected ? BccColors.accentLime : Colors.white.withOpacity(0.6),
+                color: isSelected
+                    ? BccColors.accentLime
+                    : Colors.white.withOpacity(0.6),
               ),
             ),
           ],
@@ -831,7 +898,11 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _showBulletinsDialog() {
+  void _showBulletinsDialog() async {
+    // Load live bulletins from API
+    final bulletins = await BccApiService.fetchBulletins();
+
+    if (!mounted) return;
     showDialog(
       context: context,
       builder: (ctx) => Dialog(
@@ -844,21 +915,45 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               const Row(
                 children: [
-                  Icon(Icons.campaign_rounded, color: BccColors.primaryForest, size: 24),
+                  Icon(
+                    Icons.campaign_rounded,
+                    color: BccColors.primaryForest,
+                    size: 24,
+                  ),
                   SizedBox(width: 10),
-                  Text('Council Bulletins', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+                  Text(
+                    'Council Bulletins',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17),
+                  ),
                 ],
               ),
               const SizedBox(height: 14),
-              _buildBulletinCard('💧 Criterion Works Maintenance', 'Scheduled water supply reduction in Eastern suburbs between 08:00 and 17:00 tomorrow.'),
-              const SizedBox(height: 10),
-              _buildBulletinCard('🚧 Luveve Road Resurfacing', 'Expect traffic diversions along Luveve Road near Mpilo Central Hospital.'),
-              const SizedBox(height: 16),
+              ...bulletins.map((b) {
+                final isUrgent = b['is_urgent'] == true;
+                final category = b['category']?.toString() ?? '';
+                final emoji = category == 'Water Cut'
+                    ? '💧'
+                    : category == 'Roads'
+                    ? '🚧'
+                    : category == 'Health'
+                    ? '🗑️'
+                    : '📢';
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _buildBulletinCard(
+                    '$emoji ${b['title'] ?? ''}${isUrgent ? ' ⚠️' : ''}',
+                    b['body']?.toString() ?? '',
+                  ),
+                );
+              }),
+              const SizedBox(height: 6),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: BccColors.primaryForest,
                   foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
                 onPressed: () => Navigator.pop(ctx),
                 child: const Text('Close'),
@@ -881,9 +976,19 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: BccColors.textDark)),
+          Text(
+            title,
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+              color: BccColors.textDark,
+            ),
+          ),
           const SizedBox(height: 4),
-          Text(desc, style: const TextStyle(fontSize: 12, color: BccColors.textMuted)),
+          Text(
+            desc,
+            style: const TextStyle(fontSize: 12, color: BccColors.textMuted),
+          ),
         ],
       ),
     );
@@ -906,31 +1011,75 @@ class _HomeScreenState extends State<HomeScreen> {
                   color: BccColors.primaryForest,
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.shield_rounded, color: BccColors.accentLime, size: 32),
+                child: const Icon(
+                  Icons.shield_rounded,
+                  color: BccColors.accentLime,
+                  size: 32,
+                ),
               ),
               const SizedBox(height: 14),
-              const Text('City of Bulawayo', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: BccColors.textDark)),
-              const Text('BCC SmartConnect Citizen Portal', style: TextStyle(fontSize: 12, color: BccColors.textMuted)),
+              Text(
+                _isGuest ? 'Guest User' : _userName,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                  color: BccColors.textDark,
+                ),
+              ),
+              const Text(
+                'BCC SmartConnect Citizen Portal',
+                style: TextStyle(fontSize: 12, color: BccColors.textMuted),
+              ),
               const SizedBox(height: 14),
               const Divider(),
               const ListTile(
                 dense: true,
-                leading: Icon(Icons.phone_outlined, color: BccColors.primaryForest),
+                leading: Icon(
+                  Icons.phone_outlined,
+                  color: BccColors.primaryForest,
+                ),
                 title: Text('BCC Call Centre'),
                 subtitle: Text('+263 2922 75011 / 75012'),
               ),
               const ListTile(
                 dense: true,
-                leading: Icon(Icons.language_rounded, color: BccColors.primaryForest),
+                leading: Icon(
+                  Icons.language_rounded,
+                  color: BccColors.primaryForest,
+                ),
                 title: Text('Official Website'),
                 subtitle: Text('cityofbulawayo.co.zw'),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 8),
+              // Sign Out
+              OutlinedButton.icon(
+                icon: const Icon(Icons.logout_rounded, size: 18),
+                label: const Text('Sign Out'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: BccColors.emergencyRed,
+                  side: const BorderSide(color: BccColors.emergencyRed),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                onPressed: () async {
+                  await BccApiService.signOut();
+                  if (ctx.mounted) Navigator.pop(ctx);
+                  if (mounted) {
+                    Navigator.of(context).pushReplacement(
+                      MaterialPageRoute(builder: (_) => const AuthScreen()),
+                    );
+                  }
+                },
+              ),
+              const SizedBox(height: 10),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: BccColors.primaryForest,
                   foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
                 onPressed: () => Navigator.pop(ctx),
                 child: const Text('Close'),

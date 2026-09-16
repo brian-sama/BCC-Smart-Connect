@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../constants/bcc_colors.dart';
 import '../models/incident_model.dart';
-import '../services/api_service.dart';
+import '../services/supabase_service.dart';
 
 class TrackReferenceDialog extends StatefulWidget {
   final String? initialRef;
@@ -41,7 +41,7 @@ class _TrackReferenceDialogState extends State<TrackReferenceDialog> {
       _incident = null;
     });
 
-    final res = await ApiService.trackIncident(ref.trim());
+    final res = await BccApiService.trackIncident(ref.trim());
     setState(() {
       _isLoading = false;
       if (res != null) {

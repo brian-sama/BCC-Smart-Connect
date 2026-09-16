@@ -1,378 +1,534 @@
 import 'package:flutter/material.dart';
 import '../constants/bcc_colors.dart';
 import '../services/supabase_service.dart';
+import 'home_screen.dart';
 
 class AuthScreen extends StatefulWidget {
-  const AuthScreen({super.key});
+  const AuthScreen({super.key, this.initialTabIndex = 0});
+
+  final int initialTabIndex;
 
   @override
   State<AuthScreen> createState() => _AuthScreenState();
 }
 
-class _AuthScreenState extends State<AuthScreen> {
-  bool _isSignUp = false;
-  final _emailCtrl = TextEditingController();
-  final _passCtrl = TextEditingController();
-  final _phoneCtrl = TextEditingController();
+class _AuthScreenState extends State<AuthScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+  final _loginEmailCtrl = TextEditingController();
+  final _loginPassCtrl = TextEditingController();
+  final _regFirstCtrl = TextEditingController();
+  final _regLastCtrl = TextEditingController();
+  final _regEmailCtrl = TextEditingController();
+  final _regPassCtrl = TextEditingController();
+  final _regPhoneCtrl = TextEditingController();
   bool _isLoading = false;
+  bool _obscureLogin = true;
+  bool _obscureReg = true;
   String? _error;
 
   @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(
+      length: 2,
+      vsync: this,
+      initialIndex: widget.initialTabIndex,
+    );
+    _tabController.addListener(() => setState(() => _error = null));
+  }
+
+  @override
   void dispose() {
-    _emailCtrl.dispose();
-    _passCtrl.dispose();
-    _phoneCtrl.dispose();
+    _tabController.dispose();
+    _loginEmailCtrl.dispose();
+    _loginPassCtrl.dispose();
+    _regFirstCtrl.dispose();
+    _regLastCtrl.dispose();
+    _regEmailCtrl.dispose();
+    _regPassCtrl.dispose();
+    _regPhoneCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> _submit() async {
-    final email = _emailCtrl.text.trim();
-    final password = _passCtrl.text.trim();
-    final phone = _phoneCtrl.text.trim();
+  void _goHome() {
+    Navigator.of(
+      context,
+    ).pushReplacement(MaterialPageRoute(builder: (_) => const HomeScreen()));
+  }
 
-    if (email.isEmpty || password.isEmpty) {
+  Future<void> _login() async {
+    final email = _loginEmailCtrl.text.trim();
+    final pass = _loginPassCtrl.text.trim();
+    if (email.isEmpty || pass.isEmpty) {
       setState(() => _error = 'Please enter both email and password.');
       return;
     }
-
-    if (password.length < 6) {
-      setState(() => _error = 'Password must be at least 6 characters.');
-      return;
-    }
-
     setState(() {
       _isLoading = true;
       _error = null;
     });
-
     try {
-      if (_isSignUp) {
-        await SupabaseService.signUp(
-          email: email,
-          password: password,
-          phone: phone.isNotEmpty ? phone : null,
-        );
-      } else {
-        await SupabaseService.signIn(email: email, password: password);
-      }
-
-      if (mounted) {
-        Navigator.pop(context, true);
-      }
+      await BccApiService.login(email: email, password: pass);
+      _goHome();
     } catch (e) {
-      setState(() {
-        _error = e.toString().replaceAll('Exception:', '').trim();
-      });
+      setState(() => _error = e.toString().replaceAll('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _register() async {
+    final firstName = _regFirstCtrl.text.trim();
+    final lastName = _regLastCtrl.text.trim();
+    final email = _regEmailCtrl.text.trim();
+    final pass = _regPassCtrl.text.trim();
+    final phone = _regPhoneCtrl.text.trim();
+
+    if (firstName.isEmpty ||
+        lastName.isEmpty ||
+        email.isEmpty ||
+        pass.isEmpty) {
+      setState(() => _error = 'Please fill in all required fields.');
+      return;
+    }
+    if (pass.length < 8) {
+      setState(() => _error = 'Password must be at least 8 characters.');
+      return;
+    }
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    try {
+      await BccApiService.register(
+        firstName: firstName,
+        lastName: lastName,
+        email: email,
+        password: pass,
+        phone: phone.isNotEmpty ? phone : null,
+      );
+      _goHome();
+    } catch (e) {
+      setState(() => _error = e.toString().replaceAll('Exception: ', ''));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
   Future<void> _continueAsGuest() async {
-    setState(() => _isLoading = true);
-    await SupabaseService.signInAnonymously();
-    if (mounted) {
-      Navigator.pop(context, false);
-    }
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    await BccApiService.continueAsGuest();
+    if (mounted) _goHome();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: BccColors.scaffoldBg,
+      backgroundColor: BccColors.primaryForest,
       body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Council Crest Logo Box
-                Center(
-                  child: Container(
-                    width: 72,
-                    height: 72,
+        child: Column(
+          children: [
+            // ── Hero Header ──────────────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 32, 24, 0),
+              child: Column(
+                children: [
+                  Container(
+                    width: 84,
+                    height: 84,
+                    padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: BccColors.primaryForest,
+                      color: Colors.white.withOpacity(0.12),
                       borderRadius: BorderRadius.circular(24),
+                      border: Border.all(
+                        color: BccColors.accentLime.withOpacity(0.55),
+                        width: 2,
+                      ),
                       boxShadow: [
                         BoxShadow(
-                          color: BccColors.primaryForest.withValues(alpha: 0.25),
-                          blurRadius: 16,
-                          offset: const Offset(0, 6),
+                          color: BccColors.accentGold.withOpacity(0.28),
+                          blurRadius: 20,
+                          offset: const Offset(0, 10),
                         ),
                       ],
                     ),
-                    child: const Icon(
-                      Icons.shield_rounded,
-                      color: BccColors.accentLime,
-                      size: 40,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(18),
+                      child: Image.asset(
+                        'assets/images/bcc-logo.jpg',
+                        fit: BoxFit.contain,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 18),
-
-                const Text(
-                  'BCC SmartConnect',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: BccColors.textDark,
-                    letterSpacing: -0.5,
+                  const SizedBox(height: 20),
+                  const Text(
+                    'BCC SmartConnect',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 26,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.5,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  'City of Bulawayo Citizen Portal',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: BccColors.textMuted,
+                  const SizedBox(height: 6),
+                  Text(
+                    'City of Bulawayo Civic Portal',
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.65),
+                      fontSize: 14,
+                    ),
                   ),
+                  const SizedBox(height: 32),
+                ],
+              ),
+            ),
+
+            // ── Sliding Card ─────────────────────────────────────────────────
+            Expanded(
+              child: Container(
+                decoration: const BoxDecoration(
+                  color: BccColors.scaffoldBg,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
                 ),
-
-                const SizedBox(height: 28),
-
-                // Form Container
-                Container(
-                  padding: const EdgeInsets.all(22),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: BccColors.cardBorder),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.03),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
+                child: ClipRRect(
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(32),
                   ),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // Toggle Tab
+                      // Tab Bar
                       Container(
-                        decoration: BoxDecoration(
-                          color: BccColors.scaffoldBg,
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        padding: const EdgeInsets.all(4),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: GestureDetector(
-                                onTap: () => setState(() {
-                                  _isSignUp = false;
-                                  _error = null;
-                                }),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(vertical: 9),
-                                  decoration: BoxDecoration(
-                                    color: !_isSignUp ? Colors.white : Colors.transparent,
-                                    borderRadius: BorderRadius.circular(10),
-                                    boxShadow: !_isSignUp
-                                        ? [
-                                            BoxShadow(
-                                              color: Colors.black.withValues(alpha: 0.04),
-                                              blurRadius: 4,
-                                            )
-                                          ]
-                                        : null,
-                                  ),
-                                  child: Text(
-                                    'Sign In',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      fontWeight: !_isSignUp ? FontWeight.bold : FontWeight.normal,
-                                      color: !_isSignUp ? BccColors.primaryForest : BccColors.textMuted,
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            Expanded(
-                              child: GestureDetector(
-                                onTap: () => setState(() {
-                                  _isSignUp = true;
-                                  _error = null;
-                                }),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(vertical: 9),
-                                  decoration: BoxDecoration(
-                                    color: _isSignUp ? Colors.white : Colors.transparent,
-                                    borderRadius: BorderRadius.circular(10),
-                                    boxShadow: _isSignUp
-                                        ? [
-                                            BoxShadow(
-                                              color: Colors.black.withValues(alpha: 0.04),
-                                              blurRadius: 4,
-                                            )
-                                          ]
-                                        : null,
-                                  ),
-                                  child: Text(
-                                    'Sign Up',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      fontWeight: _isSignUp ? FontWeight.bold : FontWeight.normal,
-                                      color: _isSignUp ? BccColors.primaryForest : BccColors.textMuted,
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
+                        color: Colors.white,
+                        child: TabBar(
+                          controller: _tabController,
+                          labelColor: BccColors.primaryForest,
+                          unselectedLabelColor: BccColors.textMuted,
+                          labelStyle: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 14,
+                          ),
+                          indicatorColor: BccColors.accentGold,
+                          indicatorWeight: 3,
+                          tabs: const [
+                            Tab(text: 'Sign In'),
+                            Tab(text: 'Register'),
                           ],
                         ),
                       ),
 
-                      const SizedBox(height: 18),
-
+                      // Error Banner
                       if (_error != null)
                         Container(
-                          padding: const EdgeInsets.all(10),
-                          margin: const EdgeInsets.only(bottom: 14),
+                          margin: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+                          padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: BccColors.emergencyRedSoft,
-                            borderRadius: BorderRadius.circular(10),
+                            color: const Color(0xFFFEF2F2),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFFFECACA)),
                           ),
-                          child: Text(
-                            _error!,
-                            style: const TextStyle(
-                              color: BccColors.emergencyRed,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ),
-
-                      // Email Field
-                      TextField(
-                        controller: _emailCtrl,
-                        keyboardType: TextInputType.emailAddress,
-                        decoration: InputDecoration(
-                          prefixIcon: const Icon(Icons.email_outlined, size: 18),
-                          hintText: 'Email address',
-                          hintStyle: const TextStyle(fontSize: 13),
-                          filled: true,
-                          fillColor: BccColors.scaffoldBg,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: BorderSide.none,
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                        ),
-                      ),
-
-                      if (_isSignUp) ...[
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: _phoneCtrl,
-                          keyboardType: TextInputType.phone,
-                          decoration: InputDecoration(
-                            prefixIcon: const Icon(Icons.phone_outlined, size: 18),
-                            hintText: 'Phone (e.g. +263 77 123 4567)',
-                            hintStyle: const TextStyle(fontSize: 13),
-                            filled: true,
-                            fillColor: BccColors.scaffoldBg,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(14),
-                              borderSide: BorderSide.none,
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                          ),
-                        ),
-                      ],
-
-                      const SizedBox(height: 12),
-
-                      // Password Field
-                      TextField(
-                        controller: _passCtrl,
-                        obscureText: true,
-                        decoration: InputDecoration(
-                          prefixIcon: const Icon(Icons.lock_outline_rounded, size: 18),
-                          hintText: 'Password (min 6 chars)',
-                          hintStyle: const TextStyle(fontSize: 13),
-                          filled: true,
-                          fillColor: BccColors.scaffoldBg,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: BorderSide.none,
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                        ),
-                      ),
-
-                      const SizedBox(height: 18),
-
-                      // Submit Button
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: BccColors.primaryForest,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                        ),
-                        onPressed: _isLoading ? null : _submit,
-                        child: _isLoading
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : Text(
-                                _isSignUp ? 'Create Citizen Account' : 'Sign In to Portal',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14,
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.error_outline,
+                                color: Color(0xFFDC2626),
+                                size: 18,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  _error!,
+                                  style: const TextStyle(
+                                    color: Color(0xFFDC2626),
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
                               ),
+                            ],
+                          ),
+                        ),
+
+                      // Tab Content
+                      Expanded(
+                        child: TabBarView(
+                          controller: _tabController,
+                          children: [_buildLoginTab(), _buildRegisterTab()],
+                        ),
                       ),
+
+                      // Guest divider + button
+                      _buildGuestSection(),
                     ],
                   ),
                 ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
-                const SizedBox(height: 20),
-
-                // Continue as Guest Button
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.person_outline_rounded, size: 18),
-                  label: const Text('Continue as Guest (No Account Required)'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: BccColors.textDark,
-                    side: const BorderSide(color: BccColors.cardBorder),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 13),
-                    backgroundColor: Colors.white,
-                  ),
-                  onPressed: _isLoading ? null : _continueAsGuest,
-                ),
-
-                const SizedBox(height: 12),
-                const Text(
-                  'Guests can report faults and trigger SOS.\nCreating an account lets you track status updates over time.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: BccColors.textMuted,
-                    height: 1.4,
-                  ),
-                ),
-              ],
+  Widget _buildLoginTab() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 4),
+          _label('Email Address'),
+          _textField(
+            controller: _loginEmailCtrl,
+            hint: 'you@example.com',
+            icon: Icons.mail_outline_rounded,
+            keyboardType: TextInputType.emailAddress,
+          ),
+          const SizedBox(height: 16),
+          _label('Password'),
+          _textField(
+            controller: _loginPassCtrl,
+            hint: '••••••••',
+            icon: Icons.lock_outline_rounded,
+            obscure: _obscureLogin,
+            suffix: IconButton(
+              icon: Icon(
+                _obscureLogin
+                    ? Icons.visibility_off_outlined
+                    : Icons.visibility_outlined,
+                color: BccColors.textMuted,
+                size: 20,
+              ),
+              onPressed: () => setState(() => _obscureLogin = !_obscureLogin),
             ),
           ),
+          const SizedBox(height: 28),
+          _submitButton(label: 'Sign In', onTap: _login),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRegisterTab() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _label('First Name'),
+                    _textField(
+                      controller: _regFirstCtrl,
+                      hint: 'Sipho',
+                      icon: Icons.person_outline_rounded,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _label('Last Name'),
+                    _textField(
+                      controller: _regLastCtrl,
+                      hint: 'Moyo',
+                      icon: Icons.person_outline_rounded,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _label('Email Address'),
+          _textField(
+            controller: _regEmailCtrl,
+            hint: 'you@example.com',
+            icon: Icons.mail_outline_rounded,
+            keyboardType: TextInputType.emailAddress,
+          ),
+          const SizedBox(height: 16),
+          _label('Password (min 8 chars)'),
+          _textField(
+            controller: _regPassCtrl,
+            hint: '••••••••',
+            icon: Icons.lock_outline_rounded,
+            obscure: _obscureReg,
+            suffix: IconButton(
+              icon: Icon(
+                _obscureReg
+                    ? Icons.visibility_off_outlined
+                    : Icons.visibility_outlined,
+                color: BccColors.textMuted,
+                size: 20,
+              ),
+              onPressed: () => setState(() => _obscureReg = !_obscureReg),
+            ),
+          ),
+          const SizedBox(height: 16),
+          _label('Phone (optional)'),
+          _textField(
+            controller: _regPhoneCtrl,
+            hint: '+263 77 xxx xxxx',
+            icon: Icons.phone_outlined,
+            keyboardType: TextInputType.phone,
+          ),
+          const SizedBox(height: 28),
+          _submitButton(label: 'Create Account', onTap: _register),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGuestSection() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: Color(0xFFF1F5F9))),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(child: Divider(color: Colors.grey.shade200)),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Text(
+                  'or',
+                  style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
+                ),
+              ),
+              Expanded(child: Divider(color: Colors.grey.shade200)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _isLoading ? null : _continueAsGuest,
+              icon: const Icon(Icons.person_off_outlined, size: 18),
+              label: const Text('Continue as Guest'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: BccColors.primaryForest,
+                side: const BorderSide(color: BccColors.primaryForest),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                textStyle: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Guests can report faults. Create an account to track your reports.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.grey.shade400, fontSize: 11),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Helper widgets ──────────────────────────────────────────────────────────
+
+  Widget _label(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          color: BccColors.textDark,
         ),
+      ),
+    );
+  }
+
+  Widget _textField({
+    required TextEditingController controller,
+    required String hint,
+    required IconData icon,
+    TextInputType? keyboardType,
+    bool obscure = false,
+    Widget? suffix,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        border: Border.all(color: const Color(0xFFCBD5E1)),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 14),
+            child: Icon(icon, color: BccColors.textMuted, size: 18),
+          ),
+          Expanded(
+            child: TextField(
+              controller: controller,
+              keyboardType: keyboardType,
+              obscureText: obscure,
+              style: const TextStyle(fontSize: 14, color: BccColors.textDark),
+              decoration: InputDecoration(
+                hintText: hint,
+                hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 13,
+                ),
+              ),
+            ),
+          ),
+          if (suffix != null) suffix,
+        ],
+      ),
+    );
+  }
+
+  Widget _submitButton({required String label, required VoidCallback onTap}) {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton(
+        onPressed: _isLoading ? null : onTap,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: BccColors.primaryForest,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 15),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          elevation: 4,
+          shadowColor: BccColors.primaryForest.withOpacity(0.3),
+          textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+        ),
+        child: _isLoading
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  color: BccColors.accentLime,
+                  strokeWidth: 2.5,
+                ),
+              )
+            : Text(label),
       ),
     );
   }

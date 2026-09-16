@@ -4,7 +4,6 @@ import '../models/incident_model.dart';
 
 class StorageService {
   static const String _keyReports = 'bcc_saved_reports';
-  static const String _keyOfflineQueue = 'bcc_offline_queue';
 
   /// Save an incident to local history
   static Future<void> saveReport(IncidentModel incident) async {

@@ -160,7 +160,7 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    boxShadow: '0 4px 12px rgba(12, 56, 39, 0.1)',
+    boxShadow: '0 4px 12px rgba(12, 56, 39, 0.12)',
     overflow: 'hidden',
     padding: '2px',
   },

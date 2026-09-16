@@ -1,126 +1,160 @@
-import 'dart:typed_data';
+import 'dart:convert';
+import 'dart:io';
+import 'dart:async';
 import 'package:flutter/foundation.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/incident_model.dart';
 import 'storage_service.dart';
 
-class SupabaseService {
-  // Replace these with your Supabase project credentials (from supabase.com -> Project Settings -> API)
-  static const String supabaseUrl = 'https://your-project-id.supabase.co';
-  static const String supabaseAnonKey = 'your-anon-public-key-here';
+/// BCC SmartConnect — REST API Service
+/// Connects directly to the Express backend at [baseUrl].
+/// Falls back to local offline storage if network is unavailable.
+class BccApiService {
+  // ─── Backend URL ──────────────────────────────────────────────────────────
+  // Override with --dart-define=BCC_API_URL=... for a physical device or production.
+  static const String baseUrl = String.fromEnvironment(
+    'BCC_API_URL',
+    defaultValue: 'http://10.0.2.2:3000/api',
+  );
 
-  static bool get isConfigured =>
-      supabaseUrl != 'https://your-project-id.supabase.co' &&
-      supabaseAnonKey != 'your-anon-public-key-here';
+  static const Duration _timeout = Duration(seconds: 10);
 
-  static SupabaseClient? get client {
-    if (!isConfigured) return null;
+  // ─── Token Storage ────────────────────────────────────────────────────────
+  static Future<String?> getToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('bcc_access_token');
+  }
+
+  static Future<void> _saveToken(String token) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('bcc_access_token', token);
+  }
+
+  static Future<void> _saveUser(Map<String, dynamic> user) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('bcc_user', jsonEncode(user));
+  }
+
+  static Future<Map<String, dynamic>?> getSavedUser() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString('bcc_user');
+    if (raw == null) return null;
     try {
-      return Supabase.instance.client;
+      return jsonDecode(raw) as Map<String, dynamic>;
     } catch (_) {
       return null;
     }
   }
 
-  /// Initialize Supabase if credentials are provided
-  static Future<void> initialize() async {
-    if (!isConfigured) return;
-    try {
-      await Supabase.initialize(
-        url: supabaseUrl,
-        anonKey: supabaseAnonKey,
-      );
-    } catch (e) {
-      debugPrint('Supabase initialize error: $e');
-    }
+  static Future<void> clearSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('bcc_access_token');
+    await prefs.remove('bcc_user');
   }
 
-  /// Current authenticated user (can be anonymous guest or registered citizen)
-  static User? get currentUser => client?.auth.currentUser;
-  static bool get isAuthenticated => currentUser != null;
-  static bool get isAnonymous => currentUser?.isAnonymous ?? true;
-
-  /// Sign in anonymously as a guest
-  static Future<AuthResponse?> signInAnonymously() async {
-    if (!isConfigured) return null;
-    try {
-      return await client?.auth.signInAnonymously();
-    } catch (e) {
-      debugPrint('Guest sign-in error: $e');
-      return null;
-    }
+  static bool get isGuest {
+    // Synchronous check — relies on cached user data
+    return true; // Default to guest; check getSavedUser() for actual state
   }
 
-  /// Sign up with Email and Password
-  static Future<AuthResponse?> signUp({
+  // ─── Auth headers ─────────────────────────────────────────────────────────
+  static Future<Map<String, String>> _authHeaders() async {
+    final token = await getToken();
+    return {
+      'Content-Type': 'application/json',
+      if (token != null) 'Authorization': 'Bearer $token',
+    };
+  }
+
+  // ─── Auth ─────────────────────────────────────────────────────────────────
+
+  /// Login with email + password → returns user map
+  static Future<Map<String, dynamic>> login({
+    required String email,
+    required String password,
+  }) async {
+    final res = await http
+        .post(
+          Uri.parse('$baseUrl/auth/login'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'email': email, 'password': password}),
+        )
+        .timeout(_timeout);
+
+    if (res.statusCode == 200) {
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      await _saveToken(data['access'] as String);
+      await _saveUser(data['user'] as Map<String, dynamic>);
+      return data['user'] as Map<String, dynamic>;
+    }
+
+    final error = jsonDecode(res.body)['error'] ?? 'Login failed';
+    throw Exception(error);
+  }
+
+  /// Register a new citizen account
+  static Future<Map<String, dynamic>> register({
+    required String firstName,
+    required String lastName,
     required String email,
     required String password,
     String? phone,
   }) async {
-    if (!isConfigured) return null;
+    final res = await http
+        .post(
+          Uri.parse('$baseUrl/auth/register'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'first_name': firstName,
+            'last_name': lastName,
+            'email': email,
+            'password': password,
+            if (phone != null && phone.isNotEmpty) 'phone': phone,
+          }),
+        )
+        .timeout(_timeout);
+
+    if (res.statusCode == 201) {
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      await _saveToken(data['access'] as String);
+      await _saveUser(data['user'] as Map<String, dynamic>);
+      return data['user'] as Map<String, dynamic>;
+    }
+
+    final error = jsonDecode(res.body)['error'] ?? 'Registration failed';
+    throw Exception(error);
+  }
+
+  /// Continue as guest (no account needed)
+  static Future<void> continueAsGuest() async {
     try {
-      final res = await client?.auth.signUp(
-        email: email,
-        password: password,
-        data: phone != null ? {'phone': phone} : null,
-      );
-      return res;
-    } catch (e) {
-      debugPrint('Sign up error: $e');
-      rethrow;
+      final res = await http
+          .post(
+            Uri.parse('$baseUrl/auth/guest'),
+            headers: {'Content-Type': 'application/json'},
+          )
+          .timeout(_timeout);
+
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        await _saveToken(data['access'] as String);
+        await _saveUser(data['user'] as Map<String, dynamic>);
+      }
+    } catch (_) {
+      // Guest mode works offline — just clear any old session
+      await clearSession();
     }
   }
 
-  /// Sign in with Email and Password
-  static Future<AuthResponse?> signIn({
-    required String email,
-    required String password,
-  }) async {
-    if (!isConfigured) return null;
-    try {
-      return await client?.auth.signInWithPassword(
-        email: email,
-        password: password,
-      );
-    } catch (e) {
-      debugPrint('Sign in error: $e');
-      rethrow;
-    }
-  }
-
-  /// Sign Out
+  /// Sign out
   static Future<void> signOut() async {
-    if (!isConfigured) return;
-    try {
-      await client?.auth.signOut();
-    } catch (e) {
-      debugPrint('Sign out error: $e');
-    }
+    await clearSession();
   }
 
-  /// Upload photo evidence to Supabase Storage bucket 'fault-evidence'
-  static Future<String?> uploadEvidencePhoto({
-    required Uint8List bytes,
-    required String fileName,
-  }) async {
-    if (!isConfigured || client == null) return null;
-    try {
-      final path = 'evidence/${DateTime.now().millisecondsSinceEpoch}_$fileName';
-      await client!.storage.from('fault-evidence').uploadBinary(
-            path,
-            bytes,
-            fileOptions: const FileOptions(contentType: 'image/jpeg'),
-          );
-      final publicUrl =
-          client!.storage.from('fault-evidence').getPublicUrl(path);
-      return publicUrl;
-    } catch (e) {
-      debugPrint('Photo upload error: $e');
-      return null;
-    }
-  }
+  // ─── Incidents ────────────────────────────────────────────────────────────
 
-  /// Submit a new fault or emergency to Supabase
+  /// Submit a new fault / emergency report
   static Future<IncidentModel> submitIncident({
     required String incidentType,
     required String description,
@@ -129,133 +163,186 @@ class SupabaseService {
     required double lng,
     String? phone,
     String? reporterName,
-    Uint8List? photoBytes,
-    String? photoName,
   }) async {
-    final stamp = DateTime.now().toIso8601String().substring(0, 10).replaceAll('-', '');
-    final rand = (DateTime.now().millisecondsSinceEpoch % 9000 + 1000).toString();
-    final ref = 'BCC-$stamp-$rand';
+    try {
+      final headers = await _authHeaders();
+      final res = await http
+          .post(
+            Uri.parse('$baseUrl/incidents'),
+            headers: headers,
+            body: jsonEncode({
+              'incident_type': incidentType,
+              'description': description,
+              'address': address,
+              'lat': lat,
+              'lng': lng,
+              if (phone != null && phone.isNotEmpty) 'phone': phone,
+            }),
+          )
+          .timeout(_timeout);
 
-    String? photoUrl;
-    if (photoBytes != null && photoName != null) {
-      photoUrl = await uploadEvidencePhoto(bytes: photoBytes, fileName: photoName);
-    }
-
-    final isEmergency = ['Ambulance', 'Fire', 'Disaster'].contains(incidentType);
-
-    if (isConfigured && client != null) {
-      try {
-        final insertData = {
-          'reference_number': ref,
-          'incident_type': incidentType,
-          'status': 'New',
-          'description': description,
-          'address': address,
-          'lat': lat,
-          'lng': lng,
-          'reporter_phone': phone,
-          'reporter_name': reporterName ?? 'Citizen',
-          'photo_url': photoUrl,
-          'is_emergency': isEmergency,
-        };
-
-        final res = await client!
-            .from('incidents')
-            .insert(insertData)
-            .select()
-            .single();
-
-        final inc = IncidentModel.fromJson(res);
-        await StorageService.saveReport(inc);
-        return inc;
-      } catch (e) {
-        debugPrint('Supabase insert incident error: $e');
+      if (res.statusCode == 201) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        final incident = IncidentModel.fromJson(
+          data['incident'] as Map<String, dynamic>,
+        );
+        await StorageService.saveReport(incident);
+        return incident;
       }
+
+      throw Exception(_errorMessage(res.body, 'Incident submission failed'));
+    } on SocketException catch (e) {
+      debugPrint('submitIncident error: $e');
+    } on TimeoutException catch (e) {
+      debugPrint('submitIncident timeout: $e');
+    } on http.ClientException catch (e) {
+      debugPrint('submitIncident network error: $e');
     }
 
-    // Fallback local save if Supabase is offline or not configured
-    final localInc = IncidentModel(
+    // ── Offline fallback ──────────────────────────────────────────────────
+    final stamp = DateTime.now()
+        .toIso8601String()
+        .substring(0, 10)
+        .replaceAll('-', '');
+    final rand = (DateTime.now().millisecondsSinceEpoch % 9000 + 1000)
+        .toString();
+    final fallback = IncidentModel(
       id: 'local-$rand',
-      referenceNumber: ref,
+      referenceNumber: 'BCC-$stamp-$rand',
       incidentType: incidentType,
       status: 'New',
       description: description,
       address: address,
       lat: lat,
       lng: lng,
-      isEmergency: isEmergency,
-      photoUrl: photoUrl,
-      reporterPhone: phone,
+      isEmergency: ['Ambulance', 'Fire', 'Disaster'].contains(incidentType),
       createdAt: DateTime.now(),
     );
-
-    await StorageService.saveReport(localInc);
-    return localInc;
+    await StorageService.saveReport(fallback);
+    return fallback;
   }
 
-  /// Track incident by reference code
-  static Future<IncidentModel?> trackIncident(String reference) async {
-    final cleanRef = reference.trim().toUpperCase();
-
-    if (isConfigured && client != null) {
-      try {
-        final res = await client!
-            .from('incidents')
-            .select('*')
-            .eq('reference_number', cleanRef)
-            .maybeSingle();
-
-        if (res != null) {
-          return IncidentModel.fromJson(res);
-        }
-      } catch (e) {
-        debugPrint('Supabase track incident error: $e');
+  static String _errorMessage(String body, String fallback) {
+    try {
+      final data = jsonDecode(body);
+      if (data is Map<String, dynamic> && data['error'] != null) {
+        return data['error'].toString();
       }
-    }
+    } catch (_) {}
+    return fallback;
+  }
 
-    // Fallback to local storage
-    final localList = await StorageService.getSavedReports();
-    for (var inc in localList) {
-      if (inc.referenceNumber.toUpperCase() == cleanRef) {
-        return inc;
+  /// Upload photo evidence (multipart to /api/incidents/:id/media)
+  static Future<String?> uploadPhoto({
+    required String incidentId,
+    required File photoFile,
+  }) async {
+    try {
+      final token = await getToken();
+      final req = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/incidents/$incidentId/media'),
+      );
+      if (token != null) {
+        req.headers['Authorization'] = 'Bearer $token';
       }
+      req.files.add(await http.MultipartFile.fromPath('file', photoFile.path));
+      final streamed = await req.send().timeout(_timeout);
+      final res = await http.Response.fromStream(streamed);
+      if (res.statusCode == 201) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        return data['url']?.toString();
+      }
+    } catch (e) {
+      debugPrint('uploadPhoto error: $e');
     }
-
     return null;
   }
 
-  /// Fetch council public bulletins
-  static Future<List<Map<String, dynamic>>> fetchBulletins() async {
-    if (isConfigured && client != null) {
-      try {
-        final res = await client!
-            .from('bulletins')
-            .select('*')
-            .order('created_at', {ascending: false});
-        return List<Map<String, dynamic>>.from(res);
-      } catch (e) {
-        debugPrint('Supabase fetch bulletins error: $e');
+  /// Track an incident by its reference number
+  static Future<IncidentModel?> trackIncident(String reference) async {
+    final cleanRef = reference.trim().toUpperCase();
+    try {
+      final res = await http
+          .get(Uri.parse('$baseUrl/incidents/track/$cleanRef'))
+          .timeout(_timeout);
+
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        return IncidentModel.fromJson(data['incident'] as Map<String, dynamic>);
       }
+    } catch (_) {}
+
+    // Fallback to local storage
+    final local = await StorageService.getSavedReports();
+    for (var inc in local) {
+      if (inc.referenceNumber.toUpperCase() == cleanRef) return inc;
+    }
+    return null;
+  }
+
+  /// Fetch citizen's own submitted reports (requires login)
+  static Future<List<IncidentModel>> fetchMyReports() async {
+    try {
+      final headers = await _authHeaders();
+      final res = await http
+          .get(Uri.parse('$baseUrl/incidents/my'), headers: headers)
+          .timeout(_timeout);
+
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        final list = data['incidents'] as List<dynamic>? ?? [];
+        return list
+            .map((e) => IncidentModel.fromJson(e as Map<String, dynamic>))
+            .toList();
+      }
+    } catch (_) {}
+
+    // Fall back to local cache
+    return StorageService.getSavedReports();
+  }
+
+  // ─── Bulletins ────────────────────────────────────────────────────────────
+
+  /// Fetch public council bulletins / notices
+  static Future<List<Map<String, dynamic>>> fetchBulletins() async {
+    try {
+      final res = await http
+          .get(Uri.parse('$baseUrl/bulletins'))
+          .timeout(_timeout);
+
+      if (res.statusCode == 200) {
+        final list = jsonDecode(res.body) as List<dynamic>;
+        return list.map((e) => e as Map<String, dynamic>).toList();
+      }
+    } catch (e) {
+      debugPrint('fetchBulletins error: $e');
     }
 
-    // Fallback bulletins
+    // Offline fallback
     return [
       {
         'title': 'Criterion Water Works Maintenance',
-        'body': 'Scheduled water supply reduction in Eastern suburbs between 08:00 and 17:00 tomorrow.',
+        'body':
+            'Scheduled water supply reduction in Eastern suburbs between 08:00 and 17:00 tomorrow.',
         'category': 'Water Cut',
+        'target_ward': 'Eastern Suburbs',
         'is_urgent': true,
       },
       {
         'title': 'Luveve Road Resurfacing',
-        'body': 'Expect traffic diversions along Luveve Road near Mpilo Central Hospital.',
+        'body':
+            'Expect traffic diversions along Luveve Road near Mpilo Central Hospital.',
         'category': 'Roads',
+        'target_ward': 'Luveve & Magwegwe',
         'is_urgent': false,
       },
       {
         'title': 'Refuse Collection Schedule (Ward 28)',
-        'body': 'Refuse compaction trucks servicing Cowdray Park sections 1 to 6 this Friday.',
+        'body':
+            'Refuse compaction trucks servicing Cowdray Park sections 1 to 6 this Friday.',
         'category': 'Health',
+        'target_ward': 'Cowdray Park (Ward 28)',
         'is_urgent': false,
       },
     ];

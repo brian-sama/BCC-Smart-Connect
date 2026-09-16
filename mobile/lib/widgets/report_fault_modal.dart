@@ -1,6 +1,6 @@
-import 'dart:typed_data';
+import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
+import 'package:geolocator/geolocator.dart' show Geolocator, LocationPermission, LocationSettings, LocationAccuracy;
 import 'package:image_picker/image_picker.dart';
 import 'package:latlong2/latlong.dart';
 import '../constants/bcc_colors.dart';
@@ -29,8 +29,7 @@ class _ReportFaultModalState extends State<ReportFaultModal> {
   double _lng = 28.5800;
   bool _isLocating = false;
 
-  Uint8List? _photoBytes;
-  String? _photoName;
+  File? _photoFile;
   bool _isSubmitting = false;
 
   final List<Map<String, dynamic>> _categories = [
@@ -91,8 +90,10 @@ class _ReportFaultModalState extends State<ReportFaultModal> {
       if (permission == LocationPermission.whileInUse ||
           permission == LocationPermission.always) {
         final pos = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high,
-          timeLimit: const Duration(seconds: 8),
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            timeLimit: Duration(seconds: 8),
+          ),
         );
         setState(() {
           _lat = pos.latitude;
@@ -161,10 +162,8 @@ class _ReportFaultModalState extends State<ReportFaultModal> {
     if (source != null) {
       final picked = await picker.pickImage(source: source, imageQuality: 75);
       if (picked != null) {
-        final bytes = await picked.readAsBytes();
         setState(() {
-          _photoBytes = bytes;
-          _photoName = picked.name;
+          _photoFile = File(picked.path);
         });
       }
     }
@@ -202,16 +201,22 @@ class _ReportFaultModalState extends State<ReportFaultModal> {
     final fullAddress =
         '$_selectedSuburb, ${_addressCtrl.text.trim().isEmpty ? 'General Ward Area' : _addressCtrl.text.trim()}';
 
-    final incident = await SupabaseService.submitIncident(
+    final incident = await BccApiService.submitIncident(
       incidentType: _selectedType,
       description: _descCtrl.text.trim(),
       address: fullAddress,
       lat: _lat,
       lng: _lng,
       phone: _phoneCtrl.text.trim().isNotEmpty ? _phoneCtrl.text.trim() : null,
-      photoBytes: _photoBytes,
-      photoName: _photoName,
     );
+
+    // Upload photo separately after incident is created
+    if (_photoFile != null && !incident.id.startsWith('local-')) {
+      await BccApiService.uploadPhoto(
+        incidentId: incident.id,
+        photoFile: _photoFile!,
+      );
+    }
 
     setState(() => _isSubmitting = false);
 
@@ -576,12 +581,12 @@ class _ReportFaultModalState extends State<ReportFaultModal> {
               child: Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: _photoBytes != null
+                  color: _photoFile != null
                       ? BccColors.statusResolvedSoft
                       : BccColors.scaffoldBg,
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(
-                    color: _photoBytes != null
+                    color: _photoFile != null
                         ? BccColors.statusResolved
                         : BccColors.cardBorder,
                   ),
@@ -590,23 +595,23 @@ class _ReportFaultModalState extends State<ReportFaultModal> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(
-                      _photoBytes != null
+                      _photoFile != null
                           ? Icons.check_circle_rounded
                           : Icons.camera_alt_rounded,
-                      color: _photoBytes != null
+                      color: _photoFile != null
                           ? BccColors.statusResolved
                           : BccColors.primaryForest,
                       size: 20,
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      _photoBytes != null
-                          ? 'Photo Attached (${_photoName ?? "Image"}) • Tap to change'
+                      _photoFile != null
+                          ? 'Photo Attached • Tap to change'
                           : 'Attach Photo Evidence (Camera or Gallery)',
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
-                        color: _photoBytes != null
+                        color: _photoFile != null
                             ? BccColors.statusResolved
                             : BccColors.primaryForest,
                       ),

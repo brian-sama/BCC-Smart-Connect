@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
+import 'package:geolocator/geolocator.dart' show Geolocator, LocationPermission, LocationSettings, LocationAccuracy;
 import '../constants/bcc_colors.dart';
 import '../services/supabase_service.dart';
 
@@ -56,15 +56,25 @@ class _EmergencySosDialogState extends State<EmergencySosDialog> {
     double lng = 28.5800;
 
     try {
-      final pos = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-        timeLimit: const Duration(seconds: 4),
-      );
-      lat = pos.latitude;
-      lng = pos.longitude;
+      // Request permission if needed
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.whileInUse ||
+          permission == LocationPermission.always) {
+        final pos = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            timeLimit: Duration(seconds: 4),
+          ),
+        );
+        lat = pos.latitude;
+        lng = pos.longitude;
+      }
     } catch (_) {}
 
-    final incident = await SupabaseService.submitIncident(
+    final incident = await BccApiService.submitIncident(
       incidentType: emergencyType,
       description: 'CRITICAL SOS: Citizen triggered emergency dispatch ($label).',
       address: 'Bulawayo GPS Coords: ${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)}',
