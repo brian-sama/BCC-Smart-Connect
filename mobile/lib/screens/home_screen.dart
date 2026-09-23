@@ -113,46 +113,196 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: BccColors.scaffoldBg,
-      body: Stack(
+      body: _buildCurrentPage(),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        minimum: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+        child: _buildCurvedBottomNav(),
+      ),
+    );
+  }
+
+  Widget _buildCurrentPage() {
+    switch (_currentNavIndex) {
+      case 1:
+        return _buildReportsPage();
+      case 2:
+        return _buildBulletinsPage();
+      case 3:
+        return _buildProfilePage();
+      default:
+        return RefreshIndicator(
+          color: BccColors.primaryForest,
+          onRefresh: _loadReports,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: Column(
+              children: [
+                _buildHeroHeader(),
+                const SizedBox(height: 18),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: _buildQuickActionsCard(),
+                ),
+                const SizedBox(height: 24),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: _buildRecentReportsSection(),
+                ),
+                const SizedBox(height: 24),
+              ],
+            ),
+          ),
+        );
+    }
+  }
+
+  Widget _buildPageScaffold({
+    required String title,
+    required IconData icon,
+    required Widget child,
+  }) {
+    return SafeArea(
+      child: CustomScrollView(
+        slivers: [
+          SliverAppBar(
+            pinned: true,
+            backgroundColor: BccColors.primaryForest,
+            foregroundColor: Colors.white,
+            title: Text(title),
+            leading: Icon(icon),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+            sliver: SliverToBoxAdapter(child: child),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReportsPage() {
+    return _buildPageScaffold(
+      title: 'My Reports',
+      icon: Icons.assignment_outlined,
+      child: _buildRecentReportsSection(),
+    );
+  }
+
+  Widget _buildBulletinsPage() {
+    return _buildPageScaffold(
+      title: 'Council Bulletins',
+      icon: Icons.campaign_outlined,
+      child: FutureBuilder<List<Map<String, dynamic>>>(
+        future: BccApiService.fetchBulletins(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(color: BccColors.primaryForest),
+            );
+          }
+          final bulletins = snapshot.data ?? [];
+          if (bulletins.isEmpty) {
+            return const Text(
+              'No bulletins available right now.',
+              style: TextStyle(color: BccColors.textMuted),
+            );
+          }
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: bulletins.map((bulletin) {
+              final category = bulletin['category']?.toString() ?? '';
+              final prefix = category == 'Water Cut'
+                  ? 'Water'
+                  : category == 'Roads'
+                  ? 'Roads'
+                  : category == 'Health'
+                  ? 'Health'
+                  : 'Notice';
+              final urgent = bulletin['is_urgent'] == true ? 'Urgent: ' : '';
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _buildBulletinCard(
+                  '$urgent$prefix - ${bulletin['title'] ?? ''}',
+                  bulletin['body']?.toString() ?? '',
+                ),
+              );
+            }).toList(),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildProfilePage() {
+    return _buildPageScaffold(
+      title: 'Profile',
+      icon: Icons.person_outline_rounded,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Main Scrollable Body
-          RefreshIndicator(
-            color: BccColors.primaryForest,
-            onRefresh: _loadReports,
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.only(bottom: 110),
-              physics: const AlwaysScrollableScrollPhysics(),
-              child: Column(
-                children: [
-                  // 1. TOP CURVED HERO SECTION (Matches reference design)
-                  _buildHeroHeader(),
-
-                  const SizedBox(height: 18),
-
-                  // 2. QUICK ACTIONS FLOATING CARD (4 Circular Action Icons)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: _buildQuickActionsCard(),
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  // 3. RECENT REPORTS SECTION
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: _buildRecentReportsSection(),
-                  ),
-                ],
+          Center(
+            child: Container(
+              width: 72,
+              height: 72,
+              decoration: const BoxDecoration(
+                color: BccColors.primaryForest,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.shield_rounded,
+                color: BccColors.accentLime,
+                size: 38,
               ),
             ),
           ),
-
-          // 4. FLOATING CURVED BOTTOM NAVIGATION BAR
-          Positioned(
-            left: 20,
-            right: 20,
-            bottom: 24,
-            child: _buildCurvedBottomNav(),
+          const SizedBox(height: 16),
+          Center(
+            child: Text(
+              _isGuest ? 'Guest User' : _userName,
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 20,
+                color: BccColors.textDark,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Center(
+            child: Text(
+              'BCC SmartConnect Citizen Portal',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: BccColors.textMuted),
+            ),
+          ),
+          const SizedBox(height: 24),
+          const ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.phone_outlined, color: BccColors.primaryForest),
+            title: Text('BCC Call Centre'),
+            subtitle: Text('+263 2922 75011 / 75012'),
+          ),
+          const ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(
+              Icons.language_rounded,
+              color: BccColors.primaryForest,
+            ),
+            title: Text('Official Website'),
+            subtitle: Text('cityofbulawayo.co.zw'),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: () async {
+              await BccApiService.signOut();
+              if (!mounted) return;
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(builder: (_) => const AuthScreen()),
+              );
+            },
+            icon: const Icon(Icons.logout_rounded),
+            label: const Text('Sign Out'),
           ),
         ],
       ),
@@ -222,13 +372,18 @@ class _HomeScreenState extends State<HomeScreen> {
                       fontWeight: FontWeight.w500,
                     ),
                   ),
-                  Text(
-                    _userName,
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 0.2,
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 190),
+                    child: Text(
+                      _userName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.2,
+                      ),
                     ),
                   ),
                 ],
@@ -479,42 +634,52 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _buildCircularActionButton(
-            label: 'Water',
-            sublabel: 'Pipe Leak',
-            icon: Icons.water_drop_rounded,
-            iconColor: const Color(0xFF0288D1),
-            bgColor: const Color(0xFFE1F5FE),
-            onTap: () => _openReportModal('WaterLeak'),
-          ),
-          _buildCircularActionButton(
-            label: 'Sewer',
-            sublabel: 'Overflow',
-            icon: Icons.warning_amber_rounded,
-            iconColor: const Color(0xFFD32F2F),
-            bgColor: const Color(0xFFFFEBEE),
-            onTap: () => _openReportModal('SewerBurst'),
-          ),
-          _buildCircularActionButton(
-            label: 'Roads',
-            sublabel: 'Pothole',
-            icon: Icons.remove_road_rounded,
-            iconColor: const Color(0xFF3949AB),
-            bgColor: const Color(0xFFE8EAF6),
-            onTap: () => _openReportModal('RoadDamage'),
-          ),
-          _buildCircularActionButton(
-            label: 'Lighting',
-            sublabel: 'Streetlight',
-            icon: Icons.lightbulb_rounded,
-            iconColor: const Color(0xFFF57F17),
-            bgColor: const Color(0xFFFFF9C4),
-            onTap: () => _openReportModal('StreetLight'),
-          ),
-        ],
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final columns = constraints.maxWidth < 360 ? 2 : 4;
+          return GridView.count(
+            crossAxisCount: columns,
+            mainAxisSpacing: 8,
+            crossAxisSpacing: 4,
+            childAspectRatio: columns == 2 ? 1.65 : 0.88,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            children: [
+              _buildCircularActionButton(
+                label: 'Water',
+                sublabel: 'Pipe Leak',
+                icon: Icons.water_drop_rounded,
+                iconColor: const Color(0xFF0288D1),
+                bgColor: const Color(0xFFE1F5FE),
+                onTap: () => _openReportModal('WaterLeak'),
+              ),
+              _buildCircularActionButton(
+                label: 'Sewer',
+                sublabel: 'Overflow',
+                icon: Icons.warning_amber_rounded,
+                iconColor: const Color(0xFFD32F2F),
+                bgColor: const Color(0xFFFFEBEE),
+                onTap: () => _openReportModal('SewerBurst'),
+              ),
+              _buildCircularActionButton(
+                label: 'Roads',
+                sublabel: 'Pothole',
+                icon: Icons.remove_road_rounded,
+                iconColor: const Color(0xFF3949AB),
+                bgColor: const Color(0xFFE8EAF6),
+                onTap: () => _openReportModal('RoadDamage'),
+              ),
+              _buildCircularActionButton(
+                label: 'Lighting',
+                sublabel: 'Streetlight',
+                icon: Icons.lightbulb_rounded,
+                iconColor: const Color(0xFFF57F17),
+                bgColor: const Color(0xFFFFF9C4),
+                onTap: () => _openReportModal('StreetLight'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -808,7 +973,6 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: Icons.assignment_outlined,
             label: 'Reports',
             index: 1,
-            onTap: () => _openTrackModal(),
           ),
 
           // 3: Center Raised Action Button (Lime circle with airplane/report icon)
@@ -841,7 +1005,6 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: Icons.campaign_outlined,
             label: 'Bulletins',
             index: 2,
-            onTap: _showBulletinsDialog,
           ),
 
           // 5: Profile / Info
@@ -849,7 +1012,6 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: Icons.person_outline_rounded,
             label: 'Profile',
             index: 3,
-            onTap: _showProfileDialog,
           ),
         ],
       ),
@@ -898,73 +1060,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _showBulletinsDialog() async {
-    // Load live bulletins from API
-    final bulletins = await BccApiService.fetchBulletins();
-
-    if (!mounted) return;
-    showDialog(
-      context: context,
-      builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Row(
-                children: [
-                  Icon(
-                    Icons.campaign_rounded,
-                    color: BccColors.primaryForest,
-                    size: 24,
-                  ),
-                  SizedBox(width: 10),
-                  Text(
-                    'Council Bulletins',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              ...bulletins.map((b) {
-                final isUrgent = b['is_urgent'] == true;
-                final category = b['category']?.toString() ?? '';
-                final emoji = category == 'Water Cut'
-                    ? '💧'
-                    : category == 'Roads'
-                    ? '🚧'
-                    : category == 'Health'
-                    ? '🗑️'
-                    : '📢';
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: _buildBulletinCard(
-                    '$emoji ${b['title'] ?? ''}${isUrgent ? ' ⚠️' : ''}',
-                    b['body']?.toString() ?? '',
-                  ),
-                );
-              }),
-              const SizedBox(height: 6),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: BccColors.primaryForest,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Close'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildBulletinCard(String title, String desc) {
     return Container(
       padding: const EdgeInsets.all(12),
@@ -990,103 +1085,6 @@ class _HomeScreenState extends State<HomeScreen> {
             style: const TextStyle(fontSize: 12, color: BccColors.textMuted),
           ),
         ],
-      ),
-    );
-  }
-
-  void _showProfileDialog() {
-    showDialog(
-      context: context,
-      builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        child: Padding(
-          padding: const EdgeInsets.all(22),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 60,
-                height: 60,
-                decoration: const BoxDecoration(
-                  color: BccColors.primaryForest,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.shield_rounded,
-                  color: BccColors.accentLime,
-                  size: 32,
-                ),
-              ),
-              const SizedBox(height: 14),
-              Text(
-                _isGuest ? 'Guest User' : _userName,
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
-                  color: BccColors.textDark,
-                ),
-              ),
-              const Text(
-                'BCC SmartConnect Citizen Portal',
-                style: TextStyle(fontSize: 12, color: BccColors.textMuted),
-              ),
-              const SizedBox(height: 14),
-              const Divider(),
-              const ListTile(
-                dense: true,
-                leading: Icon(
-                  Icons.phone_outlined,
-                  color: BccColors.primaryForest,
-                ),
-                title: Text('BCC Call Centre'),
-                subtitle: Text('+263 2922 75011 / 75012'),
-              ),
-              const ListTile(
-                dense: true,
-                leading: Icon(
-                  Icons.language_rounded,
-                  color: BccColors.primaryForest,
-                ),
-                title: Text('Official Website'),
-                subtitle: Text('cityofbulawayo.co.zw'),
-              ),
-              const SizedBox(height: 8),
-              // Sign Out
-              OutlinedButton.icon(
-                icon: const Icon(Icons.logout_rounded, size: 18),
-                label: const Text('Sign Out'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: BccColors.emergencyRed,
-                  side: const BorderSide(color: BccColors.emergencyRed),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                onPressed: () async {
-                  await BccApiService.signOut();
-                  if (ctx.mounted) Navigator.pop(ctx);
-                  if (mounted) {
-                    Navigator.of(context).pushReplacement(
-                      MaterialPageRoute(builder: (_) => const AuthScreen()),
-                    );
-                  }
-                },
-              ),
-              const SizedBox(height: 10),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: BccColors.primaryForest,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Close'),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
