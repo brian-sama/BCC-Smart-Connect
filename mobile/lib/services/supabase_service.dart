@@ -13,10 +13,15 @@ import 'storage_service.dart';
 class BccApiService {
   // ─── Backend URL ──────────────────────────────────────────────────────────
   // Override with --dart-define=BCC_API_URL=... for a physical device or production.
-  static const String baseUrl = String.fromEnvironment(
-    'BCC_API_URL',
-    defaultValue: 'http://10.0.2.2:3000/api',
-  );
+  static String get baseUrl {
+    const envUrl = String.fromEnvironment('BCC_API_URL');
+    if (envUrl.isNotEmpty) return envUrl;
+    if (kIsWeb) return 'http://localhost:3000/api';
+    try {
+      if (Platform.isAndroid) return 'http://10.0.2.2:3000/api';
+    } catch (_) {}
+    return 'http://localhost:3000/api';
+  }
 
   static const Duration _timeout = Duration(seconds: 10);
 
@@ -319,32 +324,7 @@ class BccApiService {
       debugPrint('fetchBulletins error: $e');
     }
 
-    // Offline fallback
-    return [
-      {
-        'title': 'Criterion Water Works Maintenance',
-        'body':
-            'Scheduled water supply reduction in Eastern suburbs between 08:00 and 17:00 tomorrow.',
-        'category': 'Water Cut',
-        'target_ward': 'Eastern Suburbs',
-        'is_urgent': true,
-      },
-      {
-        'title': 'Luveve Road Resurfacing',
-        'body':
-            'Expect traffic diversions along Luveve Road near Mpilo Central Hospital.',
-        'category': 'Roads',
-        'target_ward': 'Luveve & Magwegwe',
-        'is_urgent': false,
-      },
-      {
-        'title': 'Refuse Collection Schedule (Ward 28)',
-        'body':
-            'Refuse compaction trucks servicing Cowdray Park sections 1 to 6 this Friday.',
-        'category': 'Health',
-        'target_ward': 'Cowdray Park (Ward 28)',
-        'is_urgent': false,
-      },
-    ];
+    // No dummy data — feeds directly from database
+    return [];
   }
 }

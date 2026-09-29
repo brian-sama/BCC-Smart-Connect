@@ -17,12 +17,9 @@ import IncidentQueueView from './components/IncidentQueueView';
 import AnalyticsView from './components/AnalyticsView';
 import FieldTeamsView from './components/FieldTeamsView';
 import { bccApi } from './services/api';
-import { initialIncidents, fieldTeams as defaultTeams } from './data/mockData';
-
-
 export default function App() {
-  const [incidents, setIncidents] = useState(initialIncidents);
-  const [teams, setTeams] = useState(defaultTeams);
+  const [incidents, setIncidents] = useState([]);
+  const [teams, setTeams] = useState([]);
   const [currentTab, setCurrentTab] = useState('dashboard');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedIncident, setSelectedIncident] = useState(null);
@@ -41,17 +38,21 @@ export default function App() {
     let isMounted = true;
 
     async function loadData() {
-      const [fetchedIncidents, fetchedTeams] = await Promise.all([
-        bccApi.getIncidents(),
-        bccApi.getFieldTeams(),
-      ]);
-      if (isMounted) {
-        if (fetchedIncidents && fetchedIncidents.length > 0) {
-          setIncidents(fetchedIncidents);
+      try {
+        const [fetchedIncidents, fetchedTeams] = await Promise.all([
+          bccApi.getIncidents(),
+          bccApi.getFieldTeams(),
+        ]);
+        if (isMounted) {
+          if (Array.isArray(fetchedIncidents)) {
+            setIncidents(fetchedIncidents);
+          }
+          if (Array.isArray(fetchedTeams)) {
+            setTeams(fetchedTeams);
+          }
         }
-        if (fetchedTeams && fetchedTeams.length > 0) {
-          setTeams(fetchedTeams);
-        }
+      } catch (err) {
+        console.error('Failed to load database data:', err);
       }
     }
 
@@ -225,7 +226,7 @@ export default function App() {
               <div style={styles.middleGrid}>
                 <ActivityChartCard />
                 <PriorityEmergencyCard
-                  incident={incidents.find((i) => i.is_emergency)}
+                  incident={incidents.find((i) => i.is_emergency && i.status !== 'Resolved')}
                   onSelectIncident={setSelectedIncident}
                 />
                 <RecentIncidentsCard

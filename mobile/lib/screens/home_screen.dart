@@ -48,18 +48,18 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadReports() async {
     setState(() => _isLoading = true);
     try {
-      // Try to load from backend (my reports for authenticated, or seed from storage)
+      // Load directly from backend
       final list = await BccApiService.fetchMyReports();
       if (mounted) {
         setState(() {
-          _reports = list.isNotEmpty ? list : _reports;
+          _reports = list;
           _isLoading = false;
         });
         return;
       }
     } catch (_) {}
-    // Fallback to local storage / seed
-    final list = await StorageService.getReportsOrSeed();
+    // Fallback to locally saved reports on device (no dummy data)
+    final list = await StorageService.getSavedReports();
     if (mounted) {
       setState(() {
         _reports = list;

@@ -4,7 +4,6 @@ import 'package:geolocator/geolocator.dart' show Geolocator, LocationPermission,
 import 'package:image_picker/image_picker.dart';
 import 'package:latlong2/latlong.dart';
 import '../constants/bcc_colors.dart';
-import '../constants/bulawayo_data.dart';
 import '../models/incident_model.dart';
 import '../services/supabase_service.dart';
 import 'map_picker_dialog.dart';
@@ -20,7 +19,7 @@ class ReportFaultModal extends StatefulWidget {
 
 class _ReportFaultModalState extends State<ReportFaultModal> {
   late String _selectedType;
-  String _selectedSuburb = 'Cowdray Park';
+  final _suburbCtrl = TextEditingController();
   final _addressCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
@@ -73,6 +72,7 @@ class _ReportFaultModalState extends State<ReportFaultModal> {
 
   @override
   void dispose() {
+    _suburbCtrl.dispose();
     _addressCtrl.dispose();
     _descCtrl.dispose();
     _phoneCtrl.dispose();
@@ -196,10 +196,22 @@ class _ReportFaultModalState extends State<ReportFaultModal> {
       return;
     }
 
+    final suburb = _suburbCtrl.text.trim();
+    if (suburb.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter your suburb or municipal ward.'),
+        ),
+      );
+      return;
+    }
+
     setState(() => _isSubmitting = true);
 
-    final fullAddress =
-        '$_selectedSuburb, ${_addressCtrl.text.trim().isEmpty ? 'General Ward Area' : _addressCtrl.text.trim()}';
+    final street = _addressCtrl.text.trim();
+    final fullAddress = street.isNotEmpty
+        ? '$suburb, $street'
+        : '$suburb (General Ward Area)';
 
     final incident = await BccApiService.submitIncident(
       incidentType: _selectedType,
@@ -456,7 +468,7 @@ class _ReportFaultModalState extends State<ReportFaultModal> {
             ),
             const SizedBox(height: 12),
 
-            // Suburb Dropdown
+            // Suburb / Ward text input (User writes their own suburb)
             const Text(
               'Suburb / Municipal Ward',
               style: TextStyle(
@@ -466,26 +478,25 @@ class _ReportFaultModalState extends State<ReportFaultModal> {
               ),
             ),
             const SizedBox(height: 6),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              decoration: BoxDecoration(
-                color: BccColors.scaffoldBg,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: BccColors.cardBorder),
-              ),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<String>(
-                  value: _selectedSuburb,
-                  isExpanded: true,
-                  items: BulawayoData.suburbs.map((s) {
-                    return DropdownMenuItem(
-                      value: s,
-                      child: Text(s, style: const TextStyle(fontSize: 14)),
-                    );
-                  }).toList(),
-                  onChanged: (val) {
-                    if (val != null) setState(() => _selectedSuburb = val);
-                  },
+            TextField(
+              controller: _suburbCtrl,
+              decoration: InputDecoration(
+                hintText: 'e.g. Cowdray Park, Suburbs, Matsheumhlope, Nkulumane...',
+                hintStyle: const TextStyle(fontSize: 13, color: Colors.grey),
+                prefixIcon: const Icon(
+                  Icons.location_city_rounded,
+                  size: 20,
+                  color: BccColors.primaryForest,
+                ),
+                filled: true,
+                fillColor: BccColors.scaffoldBg,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide.none,
                 ),
               ),
             ),

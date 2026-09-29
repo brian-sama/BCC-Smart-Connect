@@ -5,7 +5,6 @@
  */
 
 import { io } from 'socket.io-client';
-import { initialIncidents, fieldTeams as mockTeams } from '../data/mockData';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -46,27 +45,7 @@ async function apiFetch(path, options = {}) {
   return res.json();
 }
 
-// ─── Mock bulletins for offline/dev fallback ─────────────────────────────────
-const mockBulletins = [
-  {
-    id: 'b-1',
-    title: 'Criterion Water Works Maintenance',
-    body: 'Scheduled water supply reduction in Eastern suburbs between 08:00 and 17:00 tomorrow due to valve rehabilitation.',
-    category: 'Water Cut',
-    target_ward: 'Eastern Suburbs',
-    is_urgent: true,
-    created_at: new Date().toISOString(),
-  },
-  {
-    id: 'b-2',
-    title: 'Luveve Road Resurfacing Update',
-    body: 'Asphalt paving along Luveve Road near Mpilo Hospital is progressing. Single lane traffic diversions in place.',
-    category: 'Roads',
-    target_ward: 'Luveve & Magwegwe',
-    is_urgent: false,
-    created_at: new Date().toISOString(),
-  },
-];
+
 
 // ─── Socket.io singleton for realtime dispatch updates ─────────────────────────
 let _socket = null;
@@ -140,10 +119,10 @@ export const bccApi = {
   async getIncidents() {
     try {
       const data = await apiFetch('/api/incidents');
-      return Array.isArray(data) && data.length > 0 ? data : initialIncidents;
+      return Array.isArray(data) ? data : [];
     } catch (err) {
-      console.warn('getIncidents fallback to mock:', err.message);
-      return initialIncidents;
+      console.warn('getIncidents failed:', err.message);
+      return [];
     }
   },
 
@@ -179,10 +158,10 @@ export const bccApi = {
   async getFieldTeams() {
     try {
       const data = await apiFetch('/api/teams');
-      return Array.isArray(data) && data.length > 0 ? data : mockTeams;
+      return Array.isArray(data) ? data : [];
     } catch (err) {
-      console.warn('getFieldTeams fallback to mock:', err.message);
-      return mockTeams;
+      console.warn('getFieldTeams failed:', err.message);
+      return [];
     }
   },
 
@@ -197,10 +176,10 @@ export const bccApi = {
   async getBulletins() {
     try {
       const data = await apiFetch('/api/bulletins');
-      return Array.isArray(data) && data.length > 0 ? data : mockBulletins;
+      return Array.isArray(data) ? data : [];
     } catch (err) {
-      console.warn('getBulletins fallback to mock:', err.message);
-      return mockBulletins;
+      console.warn('getBulletins failed:', err.message);
+      return [];
     }
   },
 

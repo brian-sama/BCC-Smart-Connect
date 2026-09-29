@@ -24,28 +24,34 @@ export default function FieldTeamsCard({ teams }) {
       </div>
 
       <div style={styles.memberList}>
-        {teams.map((member) => {
-          const pill = getStatusStyle(member.status);
-          return (
-            <div key={member.id} style={styles.memberRow}>
-              <img src={member.avatar} alt={member.name} style={styles.avatar} />
-              <div style={styles.memberInfo}>
-                <span style={styles.name}>{member.name}</span>
-                <span style={styles.role}>{member.role}</span>
+        {!teams || teams.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '24px 0', color: '#64748B', fontSize: '12.5px' }}>
+            No field response teams active in database.
+          </div>
+        ) : (
+          teams.map((member) => {
+            const pill = getStatusStyle(member.status);
+            return (
+              <div key={member.id} style={styles.memberRow}>
+                <img src={member.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&h=120&q=80'} alt={member.name} style={styles.avatar} />
+                <div style={styles.memberInfo}>
+                  <span style={styles.name}>{member.name}</span>
+                  <span style={styles.role}>{member.role}</span>
+                </div>
+                <span
+                  style={{
+                    ...styles.statusPill,
+                    backgroundColor: pill.bg,
+                    color: pill.text,
+                    borderColor: pill.border,
+                  }}
+                >
+                  {member.status}
+                </span>
               </div>
-              <span
-                style={{
-                  ...styles.statusPill,
-                  backgroundColor: pill.bg,
-                  color: pill.text,
-                  borderColor: pill.border,
-                }}
-              >
-                {member.status}
-              </span>
-            </div>
-          );
-        })}
+            );
+          })
+        )}
       </div>
     </div>
   );

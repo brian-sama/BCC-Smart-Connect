@@ -28,21 +28,27 @@ export default function RecentIncidentsCard({ incidents, onSelectIncident, onNew
       </div>
 
       <div style={styles.list}>
-        {incidents.slice(0, 4).map((inc) => (
-          <div
-            key={inc.id}
-            style={styles.itemRow}
-            onClick={() => onSelectIncident(inc)}
-          >
-            <div style={styles.iconCircle}>
-              {getIcon(inc.incident_type)}
-            </div>
-            <div style={styles.itemDetails}>
-              <span style={styles.itemTitle}>{inc.description?.slice(0, 32)}...</span>
-              <span style={styles.itemSub}>{inc.address?.split(',')[0]} • {inc.status}</span>
-            </div>
+        {incidents.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '24px 0', color: '#64748B', fontSize: '12.5px' }}>
+            No incidents logged in database yet.
           </div>
-        ))}
+        ) : (
+          incidents.slice(0, 4).map((inc) => (
+            <div
+              key={inc.id}
+              style={styles.itemRow}
+              onClick={() => onSelectIncident(inc)}
+            >
+              <div style={styles.iconCircle}>
+                {getIcon(inc.incident_type)}
+              </div>
+              <div style={styles.itemDetails}>
+                <span style={styles.itemTitle}>{inc.description?.slice(0, 32)}...</span>
+                <span style={styles.itemSub}>{inc.address?.split(',')[0]} • {inc.status}</span>
+              </div>
+            </div>
+          ))
+        )}
       </div>
     </div>
   );

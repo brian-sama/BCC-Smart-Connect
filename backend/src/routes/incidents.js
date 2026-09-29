@@ -83,7 +83,7 @@ router.post('/', optionalAuth, async (req, res) => {
          (reference_number, reporter_id, reporter_name, reporter_phone,
           incident_type, description, address, lat, lng)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-       RETURNING id, reference_number, incident_type, status, is_emergency, lat, lng, created_at`,
+       RETURNING *`,
       [
         reference_number,
         req.user?.id ?? null,
@@ -200,7 +200,9 @@ router.get('/my', optionalAuth, async (req, res) => {
   if (!req.user || req.user.is_guest) return res.json({ incidents: [] });
   try {
     const { rows } = await pool.query(
-      `SELECT id, reference_number, incident_type, status, description, created_at, updated_at
+      `SELECT id, reference_number, incident_type, status, description, address,
+              lat, lng, is_emergency, created_at, updated_at, resolved_at,
+              resolution_notes, department, assigned_to_name, photo_url
        FROM incidents WHERE reporter_id = $1 ORDER BY created_at DESC`,
       [req.user.id]
     );
