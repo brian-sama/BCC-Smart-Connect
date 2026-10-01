@@ -76,23 +76,29 @@ class BccApiService {
     required String email,
     required String password,
   }) async {
-    final res = await http
-        .post(
-          Uri.parse('$baseUrl/auth/login'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'email': email, 'password': password}),
-        )
-        .timeout(_timeout);
+    try {
+      final res = await http
+          .post(
+            Uri.parse('$baseUrl/auth/login'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'email': email, 'password': password}),
+          )
+          .timeout(_timeout);
 
-    if (res.statusCode == 200) {
-      final data = jsonDecode(res.body) as Map<String, dynamic>;
-      await _saveToken(data['access'] as String);
-      await _saveUser(data['user'] as Map<String, dynamic>);
-      return data['user'] as Map<String, dynamic>;
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        await _saveToken(data['access'] as String);
+        await _saveUser(data['user'] as Map<String, dynamic>);
+        return data['user'] as Map<String, dynamic>;
+      }
+
+      final error = _errorMessage(res.body, 'Login failed (HTTP ${res.statusCode})');
+      throw Exception(error);
+    } on SocketException {
+      throw Exception('Could not connect to the BCC server. Check your connection.');
+    } on TimeoutException {
+      throw Exception('Login request timed out. Please try again.');
     }
-
-    final error = jsonDecode(res.body)['error'] ?? 'Login failed';
-    throw Exception(error);
   }
 
   /// Register a new citizen account
@@ -103,29 +109,35 @@ class BccApiService {
     required String password,
     String? phone,
   }) async {
-    final res = await http
-        .post(
-          Uri.parse('$baseUrl/auth/register'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({
-            'first_name': firstName,
-            'last_name': lastName,
-            'email': email,
-            'password': password,
-            if (phone != null && phone.isNotEmpty) 'phone': phone,
-          }),
-        )
-        .timeout(_timeout);
+    try {
+      final res = await http
+          .post(
+            Uri.parse('$baseUrl/auth/register'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'first_name': firstName,
+              'last_name': lastName,
+              'email': email,
+              'password': password,
+              if (phone != null && phone.isNotEmpty) 'phone': phone,
+            }),
+          )
+          .timeout(_timeout);
 
-    if (res.statusCode == 201) {
-      final data = jsonDecode(res.body) as Map<String, dynamic>;
-      await _saveToken(data['access'] as String);
-      await _saveUser(data['user'] as Map<String, dynamic>);
-      return data['user'] as Map<String, dynamic>;
+      if (res.statusCode == 201) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        await _saveToken(data['access'] as String);
+        await _saveUser(data['user'] as Map<String, dynamic>);
+        return data['user'] as Map<String, dynamic>;
+      }
+
+      final error = _errorMessage(res.body, 'Registration failed (HTTP ${res.statusCode})');
+      throw Exception(error);
+    } on SocketException {
+      throw Exception('Could not connect to the BCC server. Check your connection.');
+    } on TimeoutException {
+      throw Exception('Registration request timed out. Please try again.');
     }
-
-    final error = jsonDecode(res.body)['error'] ?? 'Registration failed';
-    throw Exception(error);
   }
 
   /// Continue as guest (no account needed)
