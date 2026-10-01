@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart' show Geolocator, LocationPermission, LocationSettings, LocationAccuracy;
+import 'package:geolocator/geolocator.dart'
+    show Geolocator, LocationPermission, LocationSettings, LocationAccuracy;
 import 'package:image_picker/image_picker.dart';
 import 'package:latlong2/latlong.dart';
 import '../constants/bcc_colors.dart';
@@ -136,9 +137,19 @@ class _ReportFaultModalState extends State<ReportFaultModal> {
                 child: const Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.camera_alt_rounded, size: 32, color: BccColors.primaryForest),
+                    Icon(
+                      Icons.camera_alt_rounded,
+                      size: 32,
+                      color: BccColors.primaryForest,
+                    ),
                     SizedBox(height: 6),
-                    Text('Take Photo', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                    Text(
+                      'Take Photo',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -147,9 +158,19 @@ class _ReportFaultModalState extends State<ReportFaultModal> {
                 child: const Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.photo_library_rounded, size: 32, color: BccColors.primaryForest),
+                    Icon(
+                      Icons.photo_library_rounded,
+                      size: 32,
+                      color: BccColors.primaryForest,
+                    ),
                     SizedBox(height: 6),
-                    Text('Choose Gallery', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                    Text(
+                      'Choose Gallery',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -172,10 +193,7 @@ class _ReportFaultModalState extends State<ReportFaultModal> {
   Future<void> _openMapPinPicker() async {
     final result = await showDialog<LatLng>(
       context: context,
-      builder: (ctx) => MapPickerDialog(
-        initialLat: _lat,
-        initialLng: _lng,
-      ),
+      builder: (ctx) => MapPickerDialog(initialLat: _lat, initialLng: _lng),
     );
 
     if (result != null) {
@@ -213,28 +231,38 @@ class _ReportFaultModalState extends State<ReportFaultModal> {
         ? '$suburb, $street'
         : '$suburb (General Ward Area)';
 
-    final incident = await BccApiService.submitIncident(
-      incidentType: _selectedType,
-      description: _descCtrl.text.trim(),
-      address: fullAddress,
-      lat: _lat,
-      lng: _lng,
-      phone: _phoneCtrl.text.trim().isNotEmpty ? _phoneCtrl.text.trim() : null,
-    );
-
-    // Upload photo separately after incident is created
-    if (_photoFile != null && !incident.id.startsWith('local-')) {
-      await BccApiService.uploadPhoto(
-        incidentId: incident.id,
-        photoFile: _photoFile!,
+    try {
+      final incident = await BccApiService.submitIncident(
+        incidentType: _selectedType,
+        description: _descCtrl.text.trim(),
+        address: fullAddress,
+        lat: _lat,
+        lng: _lng,
+        phone: _phoneCtrl.text.trim().isNotEmpty
+            ? _phoneCtrl.text.trim()
+            : null,
       );
-    }
 
-    setState(() => _isSubmitting = false);
+      if (_photoFile != null) {
+        await BccApiService.uploadPhoto(
+          incidentId: incident.id,
+          photoFile: _photoFile!,
+        );
+      }
 
-    if (mounted) {
-      Navigator.pop(context, incident);
-      _showSuccessDialog(incident);
+      if (mounted) {
+        Navigator.pop(context, incident);
+        _showSuccessDialog(incident);
+      }
+    } catch (error) {
+      if (mounted) {
+        final message = error.toString().replaceFirst('Exception: ', '');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Report not submitted: $message')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
     }
   }
 
@@ -361,7 +389,10 @@ class _ReportFaultModalState extends State<ReportFaultModal> {
             // Modal Title
             Row(
               children: [
-                const Icon(Icons.add_location_alt_rounded, color: BccColors.primaryForest),
+                const Icon(
+                  Icons.add_location_alt_rounded,
+                  color: BccColors.primaryForest,
+                ),
                 const SizedBox(width: 8),
                 const Text(
                   'Report Municipal Fault',
@@ -403,7 +434,9 @@ class _ReportFaultModalState extends State<ReportFaultModal> {
                       avatar: Icon(
                         cat['icon'] as IconData,
                         size: 16,
-                        color: isSelected ? Colors.white : cat['color'] as Color,
+                        color: isSelected
+                            ? Colors.white
+                            : cat['color'] as Color,
                       ),
                       selectedColor: BccColors.primaryForest,
                       labelStyle: TextStyle(
@@ -415,11 +448,15 @@ class _ReportFaultModalState extends State<ReportFaultModal> {
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(20),
                         side: BorderSide(
-                          color: isSelected ? BccColors.primaryForest : BccColors.cardBorder,
+                          color: isSelected
+                              ? BccColors.primaryForest
+                              : BccColors.cardBorder,
                         ),
                       ),
                       onSelected: (val) {
-                        if (val) setState(() => _selectedType = cat['type'] as String);
+                        if (val) {
+                          setState(() => _selectedType = cat['type'] as String);
+                        }
                       },
                     ),
                   );
@@ -444,7 +481,9 @@ class _ReportFaultModalState extends State<ReportFaultModal> {
                     style: OutlinedButton.styleFrom(
                       foregroundColor: BccColors.primaryForest,
                       side: const BorderSide(color: BccColors.primaryForest),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                       padding: const EdgeInsets.symmetric(vertical: 10),
                     ),
                     onPressed: _isLocating ? null : _acquireCurrentLocation,
@@ -458,7 +497,9 @@ class _ReportFaultModalState extends State<ReportFaultModal> {
                     style: OutlinedButton.styleFrom(
                       foregroundColor: BccColors.primaryForest,
                       side: const BorderSide(color: BccColors.cardBorder),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                       padding: const EdgeInsets.symmetric(vertical: 10),
                     ),
                     onPressed: _openMapPinPicker,
@@ -481,7 +522,8 @@ class _ReportFaultModalState extends State<ReportFaultModal> {
             TextField(
               controller: _suburbCtrl,
               decoration: InputDecoration(
-                hintText: 'e.g. Cowdray Park, Suburbs, Matsheumhlope, Nkulumane...',
+                hintText:
+                    'e.g. Cowdray Park, Suburbs, Matsheumhlope, Nkulumane...',
                 hintStyle: const TextStyle(fontSize: 13, color: Colors.grey),
                 prefixIcon: const Icon(
                   Icons.location_city_rounded,
@@ -545,7 +587,8 @@ class _ReportFaultModalState extends State<ReportFaultModal> {
               controller: _descCtrl,
               maxLines: 3,
               decoration: InputDecoration(
-                hintText: 'Describe the issue (e.g. pipe burst spraying water onto road)...',
+                hintText:
+                    'Describe the issue (e.g. pipe burst spraying water onto road)...',
                 hintStyle: const TextStyle(fontSize: 13, color: Colors.grey),
                 filled: true,
                 fillColor: BccColors.scaffoldBg,
@@ -576,7 +619,10 @@ class _ReportFaultModalState extends State<ReportFaultModal> {
                 hintStyle: const TextStyle(fontSize: 13, color: Colors.grey),
                 filled: true,
                 fillColor: BccColors.scaffoldBg,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
                   borderSide: BorderSide.none,

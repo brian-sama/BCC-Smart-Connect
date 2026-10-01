@@ -142,15 +142,15 @@ class _AuthScreenState extends State<AuthScreen>
                     height: 84,
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.12),
+                      color: Colors.white.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(24),
                       border: Border.all(
-                        color: BccColors.accentLime.withOpacity(0.55),
+                        color: BccColors.accentLime.withValues(alpha: 0.55),
                         width: 2,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: BccColors.accentGold.withOpacity(0.28),
+                          color: BccColors.accentGold.withValues(alpha: 0.28),
                           blurRadius: 20,
                           offset: const Offset(0, 10),
                         ),
@@ -178,7 +178,7 @@ class _AuthScreenState extends State<AuthScreen>
                   Text(
                     'City of Bulawayo Civic Portal',
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.65),
+                      color: Colors.white.withValues(alpha: 0.65),
                       fontSize: 14,
                     ),
                   ),
@@ -497,7 +497,7 @@ class _AuthScreenState extends State<AuthScreen>
               ),
             ),
           ),
-          if (suffix != null) suffix,
+          ?suffix,
         ],
       ),
     );
@@ -516,7 +516,7 @@ class _AuthScreenState extends State<AuthScreen>
             borderRadius: BorderRadius.circular(14),
           ),
           elevation: 4,
-          shadowColor: BccColors.primaryForest.withOpacity(0.3),
+          shadowColor: BccColors.primaryForest.withValues(alpha: 0.3),
           textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
         ),
         child: _isLoading

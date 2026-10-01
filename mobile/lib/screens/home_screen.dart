@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../constants/bcc_colors.dart';
 import '../models/incident_model.dart';
 import 'auth_screen.dart';
@@ -7,6 +8,7 @@ import '../services/storage_service.dart';
 import '../widgets/emergency_sos_dialog.dart';
 import '../widgets/report_fault_modal.dart';
 import '../widgets/track_reference_dialog.dart';
+import '../widgets/whatsapp_community_modal.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -90,6 +92,39 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       builder: (ctx) => TrackReferenceDialog(initialRef: initialRef),
     );
+  }
+
+  void _openWhatsAppCommunity() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => const WhatsAppCommunityModal(),
+    );
+  }
+
+  Future<void> _shareBulletinWhatsApp({
+    required String title,
+    required String body,
+    required String category,
+  }) async {
+    final text = '🏛️ *CITY OF BULAWAYO — OFFICIAL NOTICE*\n'
+        '📌 *$title*\n'
+        '📂 *Category:* $category\n\n'
+        '$body\n\n'
+        '━━━━━━━━━━━━━━━━━━\n'
+        '📢 Official Channel: https://whatsapp.com/channel/0029VbA48WT1iUxQRxulvU41\n'
+        '💬 Customer Care (0784 136 505): https://wa.me/263784136505\n'
+        '💧 Water Meter Readings (0713 347 319): https://wa.me/263713347319';
+
+    final uri = Uri.parse('https://api.whatsapp.com/send?text=${Uri.encodeComponent(text)}');
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        await launchUrl(uri, mode: LaunchMode.platformDefault);
+      }
+    } catch (_) {}
   }
 
   List<IncidentModel> get _filteredReports {
@@ -225,6 +260,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: _buildBulletinCard(
                   '$urgent$prefix - ${bulletin['title'] ?? ''}',
                   bulletin['body']?.toString() ?? '',
+                  category: category.isNotEmpty ? category : 'Notice',
+                  onShareWhatsApp: () => _shareBulletinWhatsApp(
+                    title: bulletin['title']?.toString() ?? 'Notice',
+                    body: bulletin['body']?.toString() ?? '',
+                    category: category.isNotEmpty ? category : 'Notice',
+                  ),
                 ),
               );
             }).toList(),
@@ -282,6 +323,65 @@ class _HomeScreenState extends State<HomeScreen> {
             leading: Icon(Icons.phone_outlined, color: BccColors.primaryForest),
             title: Text('BCC Call Centre'),
             subtitle: Text('+263 2922 75011 / 75012'),
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(
+              Icons.chat_bubble_outline_rounded,
+              color: Color(0xFF16A34A),
+            ),
+            title: const Text('WhatsApp Customer Care'),
+            subtitle: const Text('+263 78 413 6505 (General updates & enquiries)'),
+            trailing: const Icon(Icons.open_in_new_rounded, size: 16),
+            onTap: () async {
+              final uri = Uri.parse('https://wa.me/263784136505?text=Hello%20City%20of%20Bulawayo%20Customer%20Care,%20I%20would%20like%20to%20make%20an%20enquiry.');
+              if (await canLaunchUrl(uri)) {
+                await launchUrl(uri, mode: LaunchMode.externalApplication);
+              }
+            },
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(
+              Icons.water_drop_outlined,
+              color: Color(0xFF0284C7),
+            ),
+            title: const Text('Submit Water Meter Readings'),
+            subtitle: const Text('+263 71 334 7319 (Monthly readings & photo submission)'),
+            trailing: const Icon(Icons.open_in_new_rounded, size: 16),
+            onTap: () async {
+              final uri = Uri.parse('https://wa.me/263713347319?text=Hello%20City%20of%20Bulawayo,%20I%20am%20submitting%20my%20monthly%20water%20meter%20reading.%0AAccount%20No:%20%0AAddress:%20%0AMeter%20Reading:%20');
+              if (await canLaunchUrl(uri)) {
+                await launchUrl(uri, mode: LaunchMode.externalApplication);
+              }
+            },
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(
+              Icons.campaign_outlined,
+              color: Color(0xFF16A34A),
+            ),
+            title: const Text('Official City WhatsApp Channel'),
+            subtitle: const Text('Follow for daily water shedding & notices'),
+            trailing: const Icon(Icons.open_in_new_rounded, size: 16),
+            onTap: () async {
+              final uri = Uri.parse('https://whatsapp.com/channel/0029VbA48WT1iUxQRxulvU41');
+              if (await canLaunchUrl(uri)) {
+                await launchUrl(uri, mode: LaunchMode.externalApplication);
+              }
+            },
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(
+              Icons.groups_outlined,
+              color: Color(0xFF0C3827),
+            ),
+            title: const Text('WhatsApp Ward Groups & Directory'),
+            subtitle: const Text('Browse verified Ward 1 to 29 communities'),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: _openWhatsAppCommunity,
           ),
           const ListTile(
             contentPadding: EdgeInsets.zero,
@@ -389,12 +489,35 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
               const Spacer(),
+              // WhatsApp Community Directory Button
+              GestureDetector(
+                onTap: _openWhatsAppCommunity,
+                child: Container(
+                  width: 44,
+                  height: 44,
+                  margin: const EdgeInsets.only(right: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF25D366).withValues(alpha: 0.25),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: const Color(0xFF25D366).withValues(alpha: 0.5),
+                    ),
+                  ),
+                  child: const Center(
+                    child: Icon(
+                      Icons.chat_bubble_rounded,
+                      color: Color(0xFF4ADE80),
+                      size: 20,
+                    ),
+                  ),
+                ),
+              ),
               // Frosted Notification Bell Pill with green dot indicator
               Container(
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.12),
+                  color: Colors.white.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Stack(
@@ -494,7 +617,9 @@ class _HomeScreenState extends State<HomeScreen> {
               Expanded(
                 child: ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: BccColors.accentLimeSoft.withOpacity(0.85),
+                    backgroundColor: BccColors.accentLimeSoft.withValues(
+                      alpha: 0.85,
+                    ),
                     foregroundColor: BccColors.primaryForestDark,
                     elevation: 0,
                     padding: const EdgeInsets.symmetric(vertical: 12),
@@ -519,7 +644,7 @@ class _HomeScreenState extends State<HomeScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.18),
+              color: Colors.black.withValues(alpha: 0.18),
               borderRadius: BorderRadius.circular(18),
             ),
             child: Column(
@@ -554,7 +679,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                           decoration: BoxDecoration(
                             border: Border.all(
-                              color: Colors.white.withOpacity(0.3),
+                              color: Colors.white.withValues(alpha: 0.3),
                             ),
                             borderRadius: BorderRadius.circular(20),
                           ),
@@ -601,7 +726,7 @@ class _HomeScreenState extends State<HomeScreen> {
           decoration: BoxDecoration(
             color: isSelected
                 ? BccColors.accentLime
-                : Colors.white.withOpacity(0.12),
+                : Colors.white.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(18),
           ),
           child: Text(
@@ -628,7 +753,7 @@ class _HomeScreenState extends State<HomeScreen> {
         borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 14,
             offset: const Offset(0, 4),
           ),
@@ -786,7 +911,7 @@ class _HomeScreenState extends State<HomeScreen> {
               borderRadius: BorderRadius.circular(22),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.03),
+                  color: Colors.black.withValues(alpha: 0.03),
                   blurRadius: 10,
                   offset: const Offset(0, 2),
                 ),
@@ -1040,7 +1165,7 @@ class _HomeScreenState extends State<HomeScreen> {
               icon,
               color: isSelected
                   ? BccColors.accentLime
-                  : Colors.white.withOpacity(0.6),
+                  : Colors.white.withValues(alpha: 0.6),
               size: 22,
             ),
             const SizedBox(height: 3),
@@ -1051,7 +1176,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                 color: isSelected
                     ? BccColors.accentLime
-                    : Colors.white.withOpacity(0.6),
+                    : Colors.white.withValues(alpha: 0.6),
               ),
             ),
           ],
@@ -1060,29 +1185,79 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildBulletinCard(String title, String desc) {
+  Widget _buildBulletinCard(
+    String title,
+    String desc, {
+    String category = 'Notice',
+    VoidCallback? onShareWhatsApp,
+  }) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: BccColors.scaffoldBg,
-        borderRadius: BorderRadius.circular(14),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: BccColors.cardBorder),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 13,
-              color: BccColors.textDark,
-            ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                    color: BccColors.textDark,
+                  ),
+                ),
+              ),
+              if (onShareWhatsApp != null)
+                InkWell(
+                  onTap: onShareWhatsApp,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFDCFCE7),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.share_rounded,
+                          size: 12,
+                          color: Color(0xFF16A34A),
+                        ),
+                        SizedBox(width: 4),
+                        Text(
+                          'Share',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF16A34A),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
           Text(
             desc,
-            style: const TextStyle(fontSize: 12, color: BccColors.textMuted),
+            style: const TextStyle(fontSize: 12.5, color: Color(0xFF475569), height: 1.4),
           ),
         ],
       ),

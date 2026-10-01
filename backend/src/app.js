@@ -13,6 +13,7 @@ const incidentRoutes     = require('./routes/incidents');
 const notificationRoutes = require('./routes/notifications');
 const bulletinRoutes     = require('./routes/bulletins');
 const teamRoutes         = require('./routes/teams');
+const whatsappRoutes     = require('./routes/whatsapp');
 
 const app    = express();
 const server = http.createServer(app);
@@ -59,6 +60,7 @@ app.use('/api/incidents',     incidentLimiter, incidentRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/bulletins',     bulletinRoutes);
 app.use('/api/teams',         teamRoutes);
+app.use('/api/whatsapp',      whatsappRoutes);
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));
 

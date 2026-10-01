@@ -195,6 +195,70 @@ export const bccApi = {
     }
   },
 
+  // ── WhatsApp & Community Channels ─────────────────────────────────────────
+  async getWhatsAppChannels(params = {}) {
+    try {
+      const query = new URLSearchParams();
+      if (params.category) query.set('category', params.category);
+      if (params.ward) query.set('ward', params.ward);
+      if (params.search) query.set('search', params.search);
+      const url = `/api/whatsapp/channels${query.toString() ? `?${query.toString()}` : ''}`;
+      return await apiFetch(url);
+    } catch (err) {
+      console.warn('getWhatsAppChannels failed:', err.message);
+      return [];
+    }
+  },
+
+  async createWhatsAppChannel(channel) {
+    return apiFetch('/api/whatsapp/channels', {
+      method: 'POST',
+      body: JSON.stringify(channel),
+    });
+  },
+
+  async formatWhatsAppBroadcast(broadcast) {
+    try {
+      return await apiFetch('/api/whatsapp/format-broadcast', {
+        method: 'POST',
+        body: JSON.stringify(broadcast),
+      });
+    } catch {
+      // Offline fallback formatter
+      const text = `🏛️ *CITY OF BULAWAYO — SMARTCONNECT*\n📢 *PUBLIC NOTICE*\n━━━━━━━━━━━━━━━━━━\n📌 *${broadcast.title}*\n📍 *Area:* ${broadcast.target_ward || 'All Wards'}\n\n${broadcast.body}\n━━━━━━━━━━━━━━━━━━\n📢 Official Channel: https://whatsapp.com/channel/0029VbA48WT1iUxQRxulvU41\n💬 Customer Care (0784 136 505): https://wa.me/263784136505\n💧 Water Meter Readings (0713 347 319): https://wa.me/263713347319`;
+      return {
+        formattedMessage: text,
+        shareUrl: `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`,
+        webShareUrl: `https://web.whatsapp.com/send?text=${encodeURIComponent(text)}`,
+      };
+    }
+  },
+
+  async getWhatsAppSupportLink(params = {}) {
+    try {
+      const query = new URLSearchParams(params).toString();
+      return await apiFetch(`/api/whatsapp/support-link?${query}`);
+    } catch {
+      if (params.purpose === 'meter_reading') {
+        const text = 'Hello City of Bulawayo,\n\nI am submitting my monthly water meter reading.\nAccount No: \nAddress: \nMeter Reading: ';
+        return {
+          phoneNumber: '+263 71 334 7319',
+          whatsappUrl: `https://wa.me/263713347319?text=${encodeURIComponent(text)}`,
+          text,
+        };
+      }
+      const bccNumber = '263784136505';
+      const text = params.ref
+        ? `Hello City of Bulawayo Customer Care, inquiring about Report Ref: ${params.ref} (${params.type || 'Fault'})`
+        : 'Hello City of Bulawayo Customer Care, I would like to inquire about municipal services.';
+      return {
+        phoneNumber: '+263 78 413 6505',
+        whatsappUrl: `https://wa.me/${bccNumber}?text=${encodeURIComponent(text)}`,
+        text,
+      };
+    }
+  },
+
   // ── Real-time Socket.io subscriptions ─────────────────────────────────────
   subscribeToChanges({ onNewIncident, onUpdateIncident, onNewBulletin, onTeamUpdate }) {
     const socket = getSocket();

@@ -16,7 +16,9 @@ import LoginModal from './components/LoginModal';
 import IncidentQueueView from './components/IncidentQueueView';
 import AnalyticsView from './components/AnalyticsView';
 import FieldTeamsView from './components/FieldTeamsView';
+import WhatsAppChannelsModal from './components/WhatsAppChannelsModal';
 import { bccApi } from './services/api';
+
 export default function App() {
   const [incidents, setIncidents] = useState([]);
   const [teams, setTeams] = useState([]);
@@ -25,6 +27,7 @@ export default function App() {
   const [selectedIncident, setSelectedIncident] = useState(null);
   const [isMapOpen, setIsMapOpen] = useState(false);
   const [isBroadcastOpen, setIsBroadcastOpen] = useState(false);
+  const [isWhatsAppOpen, setIsWhatsAppOpen] = useState(false);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState({
     name: 'Eng. S. Khumalo',
@@ -126,6 +129,7 @@ export default function App() {
         }}
         onOpenMap={() => setIsMapOpen(true)}
         onOpenBroadcast={() => setIsBroadcastOpen(true)}
+        onOpenWhatsApp={() => setIsWhatsAppOpen(true)}
       />
 
       {/* 2. Main Content Area */}
@@ -136,6 +140,7 @@ export default function App() {
           onSearchChange={setSearchQuery}
           onOpenBroadcast={() => setIsBroadcastOpen(true)}
           onOpenMap={() => setIsMapOpen(true)}
+          onOpenWhatsApp={() => setIsWhatsAppOpen(true)}
           currentUser={currentUser}
           onOpenLogin={() => setIsLoginOpen(true)}
         />
@@ -292,6 +297,11 @@ export default function App() {
           onSendBroadcast={handleSendBroadcast}
         />
       )}
+
+      <WhatsAppChannelsModal
+        isOpen={isWhatsAppOpen}
+        onClose={() => setIsWhatsAppOpen(false)}
+      />
 
       <LoginModal
         isOpen={isLoginOpen}

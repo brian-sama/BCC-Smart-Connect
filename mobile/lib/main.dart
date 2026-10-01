@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'constants/bcc_colors.dart';
 import 'screens/home_screen.dart';
-import 'screens/auth_screen.dart';
 import 'services/supabase_service.dart';
 
 void main() async {

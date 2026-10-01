@@ -1,11 +1,12 @@
 import React from 'react';
-import { Search, Bell, Mail, ChevronDown, Radio } from 'lucide-react';
+import { Search, Bell, Mail, ChevronDown, Radio, MessageCircle } from 'lucide-react';
 
 export default function TopBar({
   searchQuery,
   onSearchChange,
   onOpenBroadcast,
   onOpenMap,
+  onOpenWhatsApp,
   currentUser,
   onOpenLogin,
   isLive = true
@@ -36,6 +37,15 @@ export default function TopBar({
           <Radio size={14} color="#16A34A" />
           <span style={styles.liveText}>Live Cloud Sync</span>
         </div>
+
+        {/* WhatsApp Hub Button */}
+        <button
+          style={{ ...styles.iconBtn, backgroundColor: '#F0FDF4', borderColor: '#BBF7D0' }}
+          onClick={onOpenWhatsApp}
+          title="WhatsApp Channels & Ward Groups"
+        >
+          <MessageCircle size={18} color="#25D366" />
+        </button>
 
         {/* Action Icon Buttons */}
         <button style={styles.iconBtn} onClick={onOpenBroadcast} title="Send Broadcast Alert">

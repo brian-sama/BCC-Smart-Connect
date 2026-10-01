@@ -9,7 +9,7 @@ import 'storage_service.dart';
 
 /// BCC SmartConnect — REST API Service
 /// Connects directly to the Express backend at [baseUrl].
-/// Falls back to local offline storage if network is unavailable.
+/// Stores reports locally only after the backend confirms submission.
 class BccApiService {
   // ─── Backend URL ──────────────────────────────────────────────────────────
   // Override with --dart-define=BCC_API_URL=... for a physical device or production.
@@ -196,35 +196,17 @@ class BccApiService {
       }
 
       throw Exception(_errorMessage(res.body, 'Incident submission failed'));
-    } on SocketException catch (e) {
-      debugPrint('submitIncident error: $e');
-    } on TimeoutException catch (e) {
-      debugPrint('submitIncident timeout: $e');
-    } on http.ClientException catch (e) {
-      debugPrint('submitIncident network error: $e');
+    } on SocketException {
+      throw Exception(
+        'Could not reach the BCC server. Check your connection and try again.',
+      );
+    } on TimeoutException {
+      throw Exception('The report request timed out. Please try again.');
+    } on http.ClientException {
+      throw Exception(
+        'A network error prevented the report from being submitted.',
+      );
     }
-
-    // ── Offline fallback ──────────────────────────────────────────────────
-    final stamp = DateTime.now()
-        .toIso8601String()
-        .substring(0, 10)
-        .replaceAll('-', '');
-    final rand = (DateTime.now().millisecondsSinceEpoch % 9000 + 1000)
-        .toString();
-    final fallback = IncidentModel(
-      id: 'local-$rand',
-      referenceNumber: 'BCC-$stamp-$rand',
-      incidentType: incidentType,
-      status: 'New',
-      description: description,
-      address: address,
-      lat: lat,
-      lng: lng,
-      isEmergency: ['Ambulance', 'Fire', 'Disaster'].contains(incidentType),
-      createdAt: DateTime.now(),
-    );
-    await StorageService.saveReport(fallback);
-    return fallback;
   }
 
   static String _errorMessage(String body, String fallback) {
@@ -324,7 +306,96 @@ class BccApiService {
       debugPrint('fetchBulletins error: $e');
     }
 
-    // No dummy data — feeds directly from database
     return [];
+  }
+
+  // ─── WhatsApp & Community Directory ────────────────────────────────────────
+
+  /// Fetch verified WhatsApp channels and Ward groups
+  static Future<List<Map<String, dynamic>>> fetchWhatsAppChannels({
+    String? category,
+    String? ward,
+    String? search,
+  }) async {
+    try {
+      final queryParams = <String, String>{};
+      if (category != null && category.isNotEmpty && category != 'All') {
+        queryParams['category'] = category;
+      }
+      if (ward != null && ward.isNotEmpty) {
+        queryParams['ward'] = ward;
+      }
+      if (search != null && search.isNotEmpty) {
+        queryParams['search'] = search;
+      }
+
+      final uri = Uri.parse('$baseUrl/whatsapp/channels').replace(
+        queryParameters: queryParams.isNotEmpty ? queryParams : null,
+      );
+
+      final res = await http.get(uri).timeout(_timeout);
+      if (res.statusCode == 200) {
+        final list = jsonDecode(res.body) as List<dynamic>;
+        return list.map((e) => e as Map<String, dynamic>).toList();
+      }
+    } catch (e) {
+      debugPrint('fetchWhatsAppChannels error: $e');
+    }
+
+    // Default fallback channels if offline
+    return [
+      {
+        'id': '1',
+        'name': 'City of Bulawayo Official WhatsApp Channel',
+        'category': 'Channel',
+        'ward': 'All Bulawayo Wards',
+        'description': 'Follow the official verified City of Bulawayo WhatsApp Channel for daily water shedding updates, civic notices, emergency alerts, and exchange rates.',
+        'invite_url': 'https://whatsapp.com/channel/0029VbA48WT1iUxQRxulvU41',
+        'is_official': true,
+        'member_count_approx': 'Official Channel',
+      },
+      {
+        'id': '2',
+        'name': 'BCC Customer Care & Enquiries',
+        'category': 'Support',
+        'ward': 'All Bulawayo Wards',
+        'description': 'Main City of Bulawayo customer care line (0784 136 505) for public inquiries, fault reporting, service updates, and citizen feedback.',
+        'invite_url': 'https://wa.me/263784136505?text=Hello%20City%20of%20Bulawayo%20Customer%20Care,%20I%20would%20like%20to%20make%20an%20enquiry.',
+        'phone_number': '+263 78 413 6505',
+        'is_official': true,
+        'member_count_approx': 'Main Customer Line',
+      },
+      {
+        'id': '3',
+        'name': 'BCC Monthly Water Meter Readings',
+        'category': 'MeterReading',
+        'ward': 'All Bulawayo Wards',
+        'description': 'Official WhatsApp number (0713 347 319) dedicated for Bulawayo residents to submit monthly water meter readings and billing photos.',
+        'invite_url': 'https://wa.me/263713347319?text=Hello%20City%20of%20Bulawayo,%20I%20am%20submitting%20my%20monthly%20water%20meter%20reading.%0AAccount%20No:%20%0AAddress:%20%0AMeter%20Reading:%20',
+        'phone_number': '+263 71 334 7319',
+        'is_official': true,
+        'member_count_approx': 'Water Readings Desk',
+      },
+      {
+        'id': '4',
+        'name': 'Ward 1 - Bulawayo Central & Suburbs',
+        'category': 'WardGroup',
+        'ward': 'Ward 1',
+        'description': 'Community group for CBD, Suburbs, Kumalo, and Ascot residents.',
+        'invite_url': 'https://chat.whatsapp.com/BCCWard01CommunityGroup',
+        'is_official': true,
+        'member_count_approx': '1,020 Members',
+      },
+      {
+        'id': '5',
+        'name': 'Ward 28 - Cowdray Park',
+        'category': 'WardGroup',
+        'ward': 'Ward 28',
+        'description': 'Cowdray Park municipal updates group for sewer works and road gravelling.',
+        'invite_url': 'https://chat.whatsapp.com/BCCWard28CommunityGroup',
+        'is_official': true,
+        'member_count_approx': '1,800 Members',
+      }
+    ];
   }
 }

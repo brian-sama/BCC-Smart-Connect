@@ -10,10 +10,11 @@ import {
   HelpCircle,
   LogOut,
   Smartphone,
-  ShieldAlert
+  ShieldAlert,
+  MessageCircle
 } from 'lucide-react';
 
-export default function Sidebar({ currentTab, onSelectTab, onOpenMap, onOpenBroadcast }) {
+export default function Sidebar({ currentTab, onSelectTab, onOpenMap, onOpenBroadcast, onOpenWhatsApp }) {
   return (
     <aside style={styles.sidebar}>
       {/* Brand Header */}
@@ -80,11 +81,20 @@ export default function Sidebar({ currentTab, onSelectTab, onOpenMap, onOpenBroa
 
       {/* General Settings */}
       <div style={styles.menuGroup}>
-        <span style={styles.groupLabel}>GENERAL</span>
+        <span style={styles.groupLabel}>COMMUNICATION & SYSTEM</span>
         <nav style={styles.navList}>
           <button style={styles.navItem} onClick={() => onOpenBroadcast()}>
             <BellRing size={19} />
             <span>Broadcast Alert</span>
+          </button>
+
+          <button
+            style={{ ...styles.navItem, color: '#166534', backgroundColor: '#F0FDF4' }}
+            onClick={() => onOpenWhatsApp && onOpenWhatsApp()}
+          >
+            <MessageCircle size={19} color="#25D366" />
+            <span style={{ fontWeight: '700' }}>WhatsApp Hub</span>
+            <span style={{ ...styles.pillBadge, backgroundColor: '#25D366' }}>OFFICIAL</span>
           </button>
 
           <button style={styles.navItem} onClick={() => onSelectTab('analytics')}>
@@ -94,10 +104,10 @@ export default function Sidebar({ currentTab, onSelectTab, onOpenMap, onOpenBroa
 
           <button
             style={styles.navItem}
-            onClick={() => window.open('tel:+263292275011')}
+            onClick={() => window.open('https://wa.me/263784136505?text=Hello%20City%20of%20Bulawayo%20Customer%20Care,%20I%20would%20like%20to%20make%20an%20enquiry.', '_blank')}
           >
             <HelpCircle size={19} />
-            <span>BCC Call Centre</span>
+            <span>BCC Customer Care</span>
           </button>
 
           <button style={styles.navItem} onClick={() => onSelectTab('login')}>
