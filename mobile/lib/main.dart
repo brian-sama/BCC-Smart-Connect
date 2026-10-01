@@ -65,18 +65,8 @@ class _AppEntryState extends State<_AppEntry> {
   }
 
   Future<void> _checkSession() async {
-    final token = await BccApiService.getToken();
-    if (!mounted) return;
-
-    // The app should open directly to the reporting/home screen.
-    // Authentication remains available through the app UI if needed later.
-    Navigator.of(
-      context,
-    ).pushReplacement(MaterialPageRoute(builder: (_) => const HomeScreen()));
-
-    // If a token exists, keep the app in the home flow as the main entry point.
-    // This intentionally avoids redirection to the sign-in/create-account flow.
-    if (token == null) {
+    await BccApiService.getToken();
+    if (mounted) {
       setState(() => _checking = false);
     }
   }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../constants/bcc_colors.dart';
 import '../models/incident_model.dart';
@@ -26,11 +27,84 @@ class _HomeScreenState extends State<HomeScreen> {
   String _userName = 'Bulawayo Citizen';
   bool _isGuest = true;
 
+  // ─── Bulletin & Unified Feed State ─────────────────────────────────────────
+  String _bulletinCategory = 'All';
+  String _bulletinWard = 'All Bulawayo Wards';
+  String _bulletinSearch = '';
+  final Set<String> _expandedBulletinIds = {};
+  final TextEditingController _bulletinSearchController = TextEditingController();
+  List<Map<String, dynamic>> _bulletinFeed = [];
+  bool _isLoadingBulletins = true;
+
+  static const List<String> _bulawayoWards = [
+    'All Bulawayo Wards',
+    'Ward 1 - Bulawayo Central & Suburbs',
+    'Ward 2 - Northend & Kumalo',
+    'Ward 3 - Safari & Killarney',
+    'Ward 4 - Bradfield & Hillside',
+    'Ward 5 - Newton West & Montrose',
+    'Ward 6 - Bellevue & Southwold',
+    'Ward 7 - Makokoba & Mzilikazi',
+    'Ward 8 - Barbourfields & Thorngrove',
+    'Ward 9 - Mpopoma & Matshobana',
+    'Ward 10 - Entumbane',
+    'Ward 11 - Emakhandeni',
+    'Ward 12 - Njube & Lobengula West',
+    'Ward 13 - Iminyela & Mabutweni',
+    'Ward 14 - Old Lobengula & Luveve',
+    'Ward 15 - Luveve 4 & 5',
+    'Ward 16 - Gwabalanda',
+    'Ward 17 - Pumula South',
+    'Ward 18 - Pumula North',
+    'Ward 19 - Pumula East',
+    'Ward 20 - Nkulumane 1 to 5',
+    'Ward 21 - Nkulumane 6 to 12',
+    'Ward 22 - Nketa 6 to 9',
+    'Ward 23 - Nketa 7 & 8',
+    'Ward 24 - Nketa 9',
+    'Ward 25 - Nkulumane 11 & 12',
+    'Ward 26 - Emganwini',
+    'Ward 27 - Magwegwe North & West',
+    'Ward 28 - Cowdray Park',
+    'Ward 29 - Magwegwe Extension'
+  ];
+
   @override
   void initState() {
     super.initState();
     _loadReports();
     _loadUser();
+    _loadBulletinFeed();
+  }
+
+  @override
+  void dispose() {
+    _bulletinSearchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadBulletinFeed() async {
+    setState(() => _isLoadingBulletins = true);
+    try {
+      final wardParam = _bulletinWard == 'All Bulawayo Wards'
+          ? null
+          : _bulletinWard.split(' - ').first;
+      final feed = await BccApiService.fetchBulletinFeed(
+        ward: wardParam,
+        category: _bulletinCategory == 'All' ? null : _bulletinCategory,
+        search: _bulletinSearch.isEmpty ? null : _bulletinSearch,
+      );
+      if (mounted) {
+        setState(() {
+          _bulletinFeed = feed;
+          _isLoadingBulletins = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _isLoadingBulletins = false);
+      }
+    }
   }
 
   Future<void> _loadUser() async {
@@ -225,52 +299,390 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildBulletinsPage() {
-    return _buildPageScaffold(
-      title: 'Council Bulletins',
-      icon: Icons.campaign_outlined,
-      child: FutureBuilder<List<Map<String, dynamic>>>(
-        future: BccApiService.fetchBulletins(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
-              child: CircularProgressIndicator(color: BccColors.primaryForest),
-            );
-          }
-          final bulletins = snapshot.data ?? [];
-          if (bulletins.isEmpty) {
-            return const Text(
-              'No bulletins available right now.',
-              style: TextStyle(color: BccColors.textMuted),
-            );
-          }
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: bulletins.map((bulletin) {
-              final category = bulletin['category']?.toString() ?? '';
-              final prefix = category == 'Water Cut'
-                  ? 'Water'
-                  : category == 'Roads'
-                  ? 'Roads'
-                  : category == 'Health'
-                  ? 'Health'
-                  : 'Notice';
-              final urgent = bulletin['is_urgent'] == true ? 'Urgent: ' : '';
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: _buildBulletinCard(
-                  '$urgent$prefix - ${bulletin['title'] ?? ''}',
-                  bulletin['body']?.toString() ?? '',
-                  category: category.isNotEmpty ? category : 'Notice',
-                  onShareWhatsApp: () => _shareBulletinWhatsApp(
-                    title: bulletin['title']?.toString() ?? 'Notice',
-                    body: bulletin['body']?.toString() ?? '',
-                    category: category.isNotEmpty ? category : 'Notice',
+    final urgentItems = _bulletinFeed.where((item) => item['is_urgent'] == true).toList();
+
+    return SafeArea(
+      child: RefreshIndicator(
+        color: BccColors.primaryForest,
+        onRefresh: _loadBulletinFeed,
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            SliverAppBar(
+              pinned: true,
+              backgroundColor: BccColors.primaryForest,
+              foregroundColor: Colors.white,
+              title: const Text(
+                'Council Bulletins & Feed',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+              ),
+              leading: const Icon(Icons.campaign_rounded),
+              actions: [
+                IconButton(
+                  tooltip: 'WhatsApp Community Directory',
+                  icon: const Icon(Icons.forum_outlined, color: BccColors.accentLime),
+                  onPressed: _openWhatsAppCommunity,
+                ),
+              ],
+            ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // 1. Pinned Urgent Banner (if any urgent alert exists)
+                    if (urgentItems.isNotEmpty) ...[
+                      _buildUrgentAlertBanner(urgentItems.first),
+                      const SizedBox(height: 16),
+                    ],
+
+                    // 2. Search & Ward Selector Header Card
+                    _buildBulletinSearchAndWardHeader(),
+                    const SizedBox(height: 14),
+
+                    // 3. Category Filter Chips (All, Council, Channels, Ward, Water)
+                    _buildBulletinCategoryChips(),
+                    const SizedBox(height: 16),
+
+                    // 4. Feed List / Loading / Empty State
+                    if (_isLoadingBulletins)
+                      const Center(
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(vertical: 48),
+                          child: CircularProgressIndicator(color: BccColors.primaryForest),
+                        ),
+                      )
+                    else if (_bulletinFeed.isEmpty)
+                      _buildBulletinEmptyState()
+                    else
+                      ..._bulletinFeed.map((item) => Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: _buildUnifiedFeedCard(item),
+                          )),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUrgentAlertBanner(Map<String, dynamic> item) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFEF2F2),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFFCA5A5), width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFEF4444).withValues(alpha: 0.08),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFDC2626),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.warning_amber_rounded, color: Colors.white, size: 14),
+                    SizedBox(width: 4),
+                    Text(
+                      'URGENT COUNCIL NOTICE',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Spacer(),
+              Text(
+                _formatTimeAgo(item['created_at']?.toString()),
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: Color(0xFF991B1B),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            item['title']?.toString() ?? 'Urgent Notice',
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 15,
+              color: Color(0xFF7F1D1D),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            item['body']?.toString() ?? '',
+            style: const TextStyle(
+              fontSize: 12.5,
+              color: Color(0xFF991B1B),
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              InkWell(
+                onTap: () => _shareBulletinWhatsApp(
+                  title: item['title']?.toString() ?? 'Urgent BCC Notice',
+                  body: item['body']?.toString() ?? '',
+                  category: item['category']?.toString() ?? 'Urgent Alert',
+                ),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFEE2E2),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFFF87171)),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.share_rounded, size: 13, color: Color(0xFFB91C1C)),
+                      SizedBox(width: 5),
+                      Text(
+                        'Broadcast Notice',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFFB91C1C),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              );
-            }).toList(),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBulletinSearchAndWardHeader() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: BccColors.cardBorder),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // Search Input
+          TextField(
+            controller: _bulletinSearchController,
+            onChanged: (val) {
+              setState(() => _bulletinSearch = val.trim());
+              _loadBulletinFeed();
+            },
+            decoration: InputDecoration(
+              hintText: 'Search bulletins, water cuts, roads...',
+              hintStyle: const TextStyle(fontSize: 13, color: BccColors.textMuted),
+              prefixIcon: const Icon(Icons.search_rounded, size: 20, color: BccColors.primaryForest),
+              suffixIcon: _bulletinSearch.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear, size: 18),
+                      onPressed: () {
+                        _bulletinSearchController.clear();
+                        setState(() => _bulletinSearch = '');
+                        _loadBulletinFeed();
+                      },
+                    )
+                  : null,
+              contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
+              filled: true,
+              fillColor: const Color(0xFFF8FAFC),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          // Ward Dropdown Filter
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.location_on_outlined, size: 16, color: BccColors.primaryForest),
+                const SizedBox(width: 8),
+                const Text(
+                  'Ward:',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: BccColors.textDark,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      isExpanded: true,
+                      value: _bulawayoWards.contains(_bulletinWard) ? _bulletinWard : _bulawayoWards.first,
+                      icon: const Icon(Icons.arrow_drop_down_rounded, color: BccColors.primaryForest),
+                      style: const TextStyle(fontSize: 12, color: BccColors.textDark, fontWeight: FontWeight.w600),
+                      items: _bulawayoWards.map((w) {
+                        return DropdownMenuItem<String>(
+                          value: w,
+                          child: Text(
+                            w,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        );
+                      }).toList(),
+                      onChanged: (val) {
+                        if (val != null) {
+                          setState(() => _bulletinWard = val);
+                          _loadBulletinFeed();
+                        }
+                      },
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBulletinCategoryChips() {
+    final categories = [
+      {'id': 'All', 'label': 'All Feeds', 'icon': Icons.all_inclusive_rounded},
+      {'id': 'Council', 'label': '🏛️ Council Bulletins', 'icon': Icons.account_balance_rounded},
+      {'id': 'Channels', 'label': '📢 Channels', 'icon': Icons.cell_tower_rounded},
+      {'id': 'Ward', 'label': '👥 Ward Groups', 'icon': Icons.groups_rounded},
+      {'id': 'Water Cut', 'label': '💧 Water Cuts', 'icon': Icons.water_drop_rounded},
+    ];
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: categories.map((cat) {
+          final isSelected = _bulletinCategory == cat['id'];
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: FilterChip(
+              selected: isSelected,
+              label: Text(cat['label'] as String),
+              labelStyle: TextStyle(
+                fontSize: 12,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                color: isSelected ? Colors.white : BccColors.textDark,
+              ),
+              selectedColor: BccColors.primaryForest,
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: BorderSide(
+                  color: isSelected ? BccColors.primaryForest : BccColors.cardBorder,
+                ),
+              ),
+              showCheckmark: false,
+              onSelected: (_) {
+                setState(() => _bulletinCategory = cat['id'] as String);
+                _loadBulletinFeed();
+              },
+            ),
           );
-        },
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildBulletinEmptyState() {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: BccColors.cardBorder),
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: const Color(0xFFF1F5F9),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.search_off_rounded, color: BccColors.textMuted, size: 28),
+          ),
+          const SizedBox(height: 14),
+          const Text(
+            'No matching bulletins found',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 15,
+              color: BccColors.textDark,
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Try clearing your search keyword or switching your ward filter to "All Bulawayo Wards".',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 12, color: BccColors.textMuted),
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: () {
+              _bulletinSearchController.clear();
+              setState(() {
+                _bulletinCategory = 'All';
+                _bulletinWard = 'All Bulawayo Wards';
+                _bulletinSearch = '';
+              });
+              _loadBulletinFeed();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: BccColors.primaryForest,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Text('Reset All Filters'),
+          ),
+        ],
       ),
     );
   }
@@ -1185,21 +1597,46 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildBulletinCard(
-    String title,
-    String desc, {
-    String category = 'Notice',
-    VoidCallback? onShareWhatsApp,
-  }) {
+  String _formatTimeAgo(String? dateStr) {
+    if (dateStr == null || dateStr.isEmpty) return 'Recent';
+    try {
+      final dt = DateTime.parse(dateStr).toLocal();
+      final diff = DateTime.now().difference(dt);
+      if (diff.inMinutes < 1) return 'Just now';
+      if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+      if (diff.inHours < 24) return '${diff.inHours}h ago';
+      if (diff.inDays == 1) return 'Yesterday';
+      return '${diff.inDays}d ago';
+    } catch (_) {
+      return 'Recent';
+    }
+  }
+
+  Widget _buildUnifiedFeedCard(Map<String, dynamic> item) {
+    final id = item['id']?.toString() ?? UniqueKey().toString();
+    final isExpanded = _expandedBulletinIds.contains(id);
+    final title = item['title']?.toString() ?? 'Council Notice';
+    final body = item['body']?.toString() ?? '';
+    final sourceType = item['source_type']?.toString() ?? 'council';
+    final badgeText = item['source_badge']?.toString() ?? 'Official Notice';
+    final category = item['category']?.toString() ?? 'Notice';
+    final targetWard = item['target_ward']?.toString();
+    final actionUrl = item['action_url']?.toString();
+    final actionLabel = item['action_label']?.toString() ?? 'Open in WhatsApp';
+    final isUrgent = item['is_urgent'] == true;
+
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: BccColors.cardBorder),
+        border: Border.all(
+          color: isUrgent ? const Color(0xFFFCA5A5) : BccColors.cardBorder,
+          width: isUrgent ? 1.2 : 1,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
+            color: Colors.black.withValues(alpha: 0.03),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -1208,41 +1645,139 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Header Row: Source Badge + Time
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Expanded(
+              _buildSourceBadge(sourceType, badgeText),
+              const Spacer(),
+              Text(
+                _formatTimeAgo(item['created_at']?.toString()),
+                style: const TextStyle(fontSize: 11, color: BccColors.textMuted, fontWeight: FontWeight.w500),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+
+          // Title
+          Text(
+            title,
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 14.5,
+              color: isUrgent ? const Color(0xFF991B1B) : BccColors.textDark,
+              height: 1.3,
+            ),
+          ),
+          const SizedBox(height: 6),
+
+          // Body text (with expand/collapse)
+          Text(
+            body,
+            maxLines: isExpanded ? null : 3,
+            overflow: isExpanded ? TextOverflow.visible : TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 12.5, color: Color(0xFF475569), height: 1.45),
+          ),
+
+          if (body.length > 130) ...[
+            const SizedBox(height: 4),
+            InkWell(
+              onTap: () {
+                setState(() {
+                  if (isExpanded) {
+                    _expandedBulletinIds.remove(id);
+                  } else {
+                    _expandedBulletinIds.add(id);
+                  }
+                });
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
                 child: Text(
-                  title,
+                  isExpanded ? 'Show less ▴' : 'Read full update ▾',
                   style: const TextStyle(
+                    fontSize: 11.5,
                     fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                    color: BccColors.textDark,
+                    color: BccColors.primaryForest,
                   ),
                 ),
               ),
-              if (onShareWhatsApp != null)
+            ),
+          ],
+
+          const SizedBox(height: 10),
+
+          // Metadata Chips (Category & Ward)
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  '#$category',
+                  style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+                ),
+              ),
+              if (targetWard != null && targetWard.isNotEmpty && targetWard != 'All Bulawayo Wards')
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE0F2FE),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.location_on, size: 10, color: Color(0xFF0284C7)),
+                      const SizedBox(width: 3),
+                      Text(
+                        targetWard,
+                        style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF0369A1)),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+
+          const SizedBox(height: 12),
+          const Divider(height: 1, color: Color(0xFFF1F5F9)),
+          const SizedBox(height: 8),
+
+          // Action Buttons Bar
+          Row(
+            children: [
+              if (actionUrl != null && actionUrl.isNotEmpty) ...[
                 InkWell(
-                  onTap: onShareWhatsApp,
+                  onTap: () async {
+                    final uri = Uri.parse(actionUrl);
+                    try {
+                      if (await canLaunchUrl(uri)) {
+                        await launchUrl(uri, mode: LaunchMode.externalApplication);
+                      }
+                    } catch (_) {}
+                  },
                   borderRadius: BorderRadius.circular(8),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(
                       color: const Color(0xFFDCFCE7),
                       borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFF86EFAC)),
                     ),
-                    child: const Row(
+                    child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(
-                          Icons.share_rounded,
-                          size: 12,
-                          color: Color(0xFF16A34A),
-                        ),
-                        SizedBox(width: 4),
+                        const Icon(Icons.chat_bubble_outline_rounded, size: 13, color: Color(0xFF16A34A)),
+                        const SizedBox(width: 5),
                         Text(
-                          'Share',
-                          style: TextStyle(
+                          actionLabel,
+                          style: const TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.bold,
                             color: Color(0xFF16A34A),
@@ -1252,12 +1787,105 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                 ),
+                const SizedBox(width: 8),
+              ],
+              const Spacer(),
+              // Copy Button
+              IconButton(
+                icon: const Icon(Icons.copy_rounded, size: 16, color: BccColors.textMuted),
+                tooltip: 'Copy update text',
+                constraints: const BoxConstraints(),
+                padding: const EdgeInsets.all(6),
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(text: '$title\n\n$body'));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Notice text copied to clipboard'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(width: 4),
+              // Share Button
+              InkWell(
+                onTap: () => _shareBulletinWhatsApp(
+                  title: title,
+                  body: body,
+                  category: category,
+                ),
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.share_rounded, size: 13, color: Color(0xFF475569)),
+                      SizedBox(width: 5),
+                      Text(
+                        'Share',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF475569),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: 6),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSourceBadge(String sourceType, String badgeText) {
+    Color bg = const Color(0xFFF1F5F9);
+    Color text = const Color(0xFF475569);
+    IconData icon = Icons.info_outline_rounded;
+
+    if (sourceType == 'council') {
+      bg = const Color(0xFFE8F5E9);
+      text = const Color(0xFF1B5E20);
+      icon = Icons.account_balance_rounded;
+    } else if (sourceType == 'channel') {
+      bg = const Color(0xFFDCFCE7);
+      text = const Color(0xFF15803D);
+      icon = Icons.cell_tower_rounded;
+    } else if (sourceType == 'ward') {
+      bg = const Color(0xFFEFF6FF);
+      text = const Color(0xFF1D4ED8);
+      icon = Icons.groups_rounded;
+    } else if (sourceType == 'broadcast') {
+      bg = const Color(0xFFFEF3C7);
+      text = const Color(0xFFB45309);
+      icon = Icons.bolt_rounded;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: text),
+          const SizedBox(width: 4),
           Text(
-            desc,
-            style: const TextStyle(fontSize: 12.5, color: Color(0xFF475569), height: 1.4),
+            badgeText,
+            style: TextStyle(
+              fontSize: 10.5,
+              fontWeight: FontWeight.bold,
+              color: text,
+            ),
           ),
         ],
       ),

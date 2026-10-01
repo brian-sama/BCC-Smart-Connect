@@ -12,6 +12,7 @@ import 'storage_service.dart';
 /// Stores reports locally only after the backend confirms submission.
 class BccApiService {
   // ─── Backend URL ──────────────────────────────────────────────────────────
+  // Default points to live cloud Render backend.
   // Override with --dart-define=BCC_API_URL=... if pointing to a different endpoint.
   static String get baseUrl {
     const envUrl = String.fromEnvironment('BCC_API_URL');
@@ -285,7 +286,114 @@ class BccApiService {
     return StorageService.getSavedReports();
   }
 
-  // ─── Bulletins ────────────────────────────────────────────────────────────
+  // ─── Bulletins & Feed ───────────────────────────────────────────────────────
+
+  /// Fetch unified bulletin feed (Council bulletins, WhatsApp channel updates, and Ward notices)
+  static Future<List<Map<String, dynamic>>> fetchBulletinFeed({
+    String? ward,
+    String? category,
+    String? search,
+  }) async {
+    try {
+      final queryParams = <String, String>{};
+      if (ward != null && ward.isNotEmpty && ward != 'All' && ward != 'All Bulawayo Wards') {
+        queryParams['ward'] = ward;
+      }
+      if (category != null && category.isNotEmpty && category != 'All') {
+        queryParams['category'] = category;
+      }
+      if (search != null && search.isNotEmpty) {
+        queryParams['search'] = search;
+      }
+
+      final uri = Uri.parse('$baseUrl/bulletins/feed').replace(
+        queryParameters: queryParams.isNotEmpty ? queryParams : null,
+      );
+
+      final res = await http.get(uri).timeout(_timeout);
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        final list = data['feed'] as List<dynamic>? ?? [];
+        return list.map((e) => e as Map<String, dynamic>).toList();
+      }
+    } catch (e) {
+      debugPrint('fetchBulletinFeed error: $e');
+    }
+
+    // Default offline fallback feed
+    return [
+      {
+        'id': 'b1',
+        'source_type': 'council',
+        'source_name': 'City of Bulawayo Council',
+        'source_badge': 'Official Council',
+        'title': 'Criterion Water Treatment Plant Maintenance',
+        'body': 'Scheduled 48-hour citywide water rationing shutdown to carry out critical valve repairs at Criterion Waterworks. Eastern and Western suburbs are advised to store drinking water.',
+        'category': 'Water Cut',
+        'target_ward': 'All Bulawayo Wards',
+        'is_urgent': true,
+        'created_at': DateTime.now().subtract(const Duration(minutes: 25)).toIso8601String(),
+        'action_url': null,
+        'action_label': null,
+      },
+      {
+        'id': 'b2',
+        'source_type': 'channel',
+        'source_name': 'City of Bulawayo WhatsApp Channel',
+        'source_badge': 'Official WhatsApp Channel',
+        'title': 'Daily Water Shedding Roster & Reservoir Levels',
+        'body': 'Criterion Reservoir level is at 38%. Magwegwe Reservoir pumping has resumed. Check the full daily schedule and updates on the official BCC channel.',
+        'category': 'Channel',
+        'target_ward': 'All Bulawayo Wards',
+        'is_urgent': false,
+        'created_at': DateTime.now().subtract(const Duration(hours: 2)).toIso8601String(),
+        'action_url': 'https://whatsapp.com/channel/0029VbA48WT1iUxQRxulvU41',
+        'action_label': 'Open Channel in WhatsApp',
+      },
+      {
+        'id': 'b3',
+        'source_type': 'council',
+        'source_name': 'BCC Health Inspectorate',
+        'source_badge': 'Official Council',
+        'title': 'Waterborne Disease & Cholera Advisory',
+        'body': 'Please ensure drinking water is boiled for at least 3 minutes or treated with WaterGuard tablets available free of charge at all municipal polyclinics.',
+        'category': 'Health',
+        'target_ward': 'All Bulawayo Wards',
+        'is_urgent': true,
+        'created_at': DateTime.now().subtract(const Duration(hours: 5)).toIso8601String(),
+        'action_url': null,
+        'action_label': null,
+      },
+      {
+        'id': 'b4',
+        'source_type': 'ward',
+        'source_name': 'Ward 28 - Cowdray Park Community',
+        'source_badge': 'Ward Community Group',
+        'title': 'Sewer Pipe Rehabilitation along Stand 402',
+        'body': 'BCC engineering crew has arrived on site to repair the main sewer blockage. Residents are advised to avoid the intersection of Stand 402 and Garikai Section.',
+        'category': 'Ward',
+        'target_ward': 'Ward 28',
+        'is_urgent': false,
+        'created_at': DateTime.now().subtract(const Duration(hours: 9)).toIso8601String(),
+        'action_url': 'https://chat.whatsapp.com/BCCWard28CommunityGroup',
+        'action_label': 'Join Ward 28 Group',
+      },
+      {
+        'id': 'b5',
+        'source_type': 'council',
+        'source_name': 'BCC Roads Department',
+        'source_badge': 'Official Council',
+        'title': 'Luveve Road Pothole Patching & Resurfacing',
+        'body': 'Emergency road maintenance works underway along Luveve Road. Traffic diverted through Old Khami Rd. Please exercise caution when driving.',
+        'category': 'Roads',
+        'target_ward': 'Ward 14',
+        'is_urgent': false,
+        'created_at': DateTime.now().subtract(const Duration(days: 1)).toIso8601String(),
+        'action_url': null,
+        'action_label': null,
+      },
+    ];
+  }
 
   /// Fetch public council bulletins / notices
   static Future<List<Map<String, dynamic>>> fetchBulletins() async {

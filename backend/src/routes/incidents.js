@@ -53,6 +53,37 @@ function generateReference() {
   return `BCC-${stamp}-${rand}`;
 }
 
+// ─── SLA & Escalation Engine ──────────────────────────────────────────────────
+function calculateSla(incident) {
+  if (!incident || !incident.created_at) return incident;
+
+  const created = new Date(incident.created_at).getTime();
+  const now = Date.now();
+  const ageMinutes = Math.floor((now - created) / (60 * 1000));
+
+  // SLA thresholds in minutes based on incident criticality
+  let targetMinutes = 1440; // Default 24 hours
+  if (['Ambulance', 'Fire', 'Disaster'].includes(incident.incident_type)) {
+    targetMinutes = 15; // 15 minutes for life/safety emergencies
+  } else if (['WaterLeak', 'SewerBurst'].includes(incident.incident_type)) {
+    targetMinutes = 120; // 2 hours for major utilities
+  } else if (['StreetLight', 'RoadDamage'].includes(incident.incident_type)) {
+    targetMinutes = 2880; // 48 hours for civil infrastructure
+  }
+
+  const isResolved = ['Resolved', 'Closed'].includes(incident.status);
+  const isBreached = !isResolved && ageMinutes > targetMinutes;
+  const isWarning = !isResolved && ageMinutes > (targetMinutes * 0.75);
+
+  return {
+    ...incident,
+    sla_target_minutes: targetMinutes,
+    age_minutes: ageMinutes,
+    is_sla_breached: isBreached,
+    sla_urgency: isResolved ? 'RESOLVED' : (isBreached ? 'CRITICAL' : (isWarning ? 'WARNING' : 'NORMAL')),
+  };
+}
+
 // ─── POST /api/incidents — anonymous OR authenticated submission ──────────────
 router.post('/', optionalAuth, async (req, res) => {
   const { incident_type, lat, lng, description, address, phone, fcm_token } = req.body;
@@ -72,6 +103,37 @@ router.post('/', optionalAuth, async (req, res) => {
 
   try {
     const reference_number = generateReference();
+
+    // Automated Spatial Clustering / Deduplication Check (within 150m in last 24h)
+    let nearbyDuplicates = [];
+    try {
+      const dupResult = await pool.query(
+        `SELECT id, reference_number, incident_type, status, address, created_at,
+                ROUND((6371000 * acos(
+                  LEAST(1.0, GREATEST(-1.0,
+                    cos(radians($1)) * cos(radians(lat)) * cos(radians(lng) - radians($2)) +
+                    sin(radians($1)) * sin(radians(lat))
+                  ))
+                ))::numeric, 0) AS distance_meters
+         FROM incidents
+         WHERE incident_type = $3
+           AND status IN ('New', 'Assigned', 'InProgress')
+           AND created_at >= NOW() - INTERVAL '24 HOURS'
+           AND lat IS NOT NULL AND lng IS NOT NULL
+           AND (6371000 * acos(
+                  LEAST(1.0, GREATEST(-1.0,
+                    cos(radians($1)) * cos(radians(lat)) * cos(radians(lng) - radians($2)) +
+                    sin(radians($1)) * sin(radians(lat))
+                  ))
+                )) <= 150
+         ORDER BY distance_meters ASC
+         LIMIT 5`,
+        [numLat, numLng, incident_type]
+      );
+      nearbyDuplicates = dupResult.rows;
+    } catch (dupErr) {
+      console.warn('Spatial deduplication check skipped:', dupErr.message);
+    }
 
     // Update reporter's FCM token if they're authenticated
     if (req.user?.id && fcm_token) {
@@ -97,17 +159,32 @@ router.post('/', optionalAuth, async (req, res) => {
       ]
     );
 
-    const incident = rows[0];
+    let incident = rows[0];
+
+    // Attach deduplication & SLA metadata
+    if (nearbyDuplicates.length > 0) {
+      incident.duplicate_detected = true;
+      incident.nearby_duplicate_count = nearbyDuplicates.length;
+      incident.primary_cluster_reference = nearbyDuplicates[0].reference_number;
+    }
+
+    incident = calculateSla(incident);
 
     // Log initial timeline entry
     try {
+      const reporterLabel = req.user ? `${req.user.first_name || ''} ${req.user.last_name || ''}`.trim() || 'Citizen' : (phone ? `Citizen (${phone})` : 'Anonymous Citizen');
+      const timelineNote = nearbyDuplicates.length > 0
+        ? `Report filed by ${reporterLabel}. Spatial Clustering: Detected ${nearbyDuplicates.length} existing active report(s) within 150m (Ref: ${nearbyDuplicates[0].reference_number}).`
+        : `Report filed by ${reporterLabel}.`;
+
       await pool.query(
         `INSERT INTO incident_timeline (incident_id, actor_name, actor_role, status, notes)
-         VALUES ($1, $2, $3, 'New', 'Report filed by citizen.')`,
+         VALUES ($1, $2, $3, 'New', $4)`,
         [
           incident.id,
-          req.user ? `${req.user.first_name || ''} ${req.user.last_name || ''}`.trim() || 'Citizen' : (phone ? `Citizen (${phone})` : 'Anonymous Citizen'),
+          reporterLabel,
           req.user?.role ?? 'Resident',
+          timelineNote,
         ]
       );
     } catch (_) {
@@ -149,7 +226,9 @@ router.get('/', optionalAuth, async (req, res) => {
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params
     );
-    res.json(rows);
+
+    const incidentsWithSla = rows.map(calculateSla);
+    res.json(incidentsWithSla);
   } catch (err) {
     console.error('GET /incidents:', err.message);
     res.status(500).json({ error: 'Failed to fetch incidents' });
