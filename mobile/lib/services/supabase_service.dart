@@ -12,12 +12,12 @@ import 'storage_service.dart';
 /// Stores reports locally only after the backend confirms submission.
 class BccApiService {
   // ─── Backend URL ──────────────────────────────────────────────────────────
-  // Default points to live cloud Render backend.
+  // Live cloud Render backend: https://bcc-smart-connect.onrender.com/api
   // Override with --dart-define=BCC_API_URL=... if pointing to a different endpoint.
   static String get baseUrl {
     const envUrl = String.fromEnvironment('BCC_API_URL');
     if (envUrl.isNotEmpty) return envUrl;
-    return 'https://bcc-smartconnect-api.onrender.com/api';
+    return 'https://bcc-smart-connect.onrender.com/api';
   }
 
   static const Duration _timeout = Duration(seconds: 10);

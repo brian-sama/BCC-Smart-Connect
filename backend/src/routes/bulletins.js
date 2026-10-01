@@ -270,4 +270,16 @@ router.post('/', authenticate, async (req, res) => {
   }
 });
 
+// POST /api/bulletins/sync — Ingest latest notices and water updates from citybyo.co.zw
+router.post('/sync', async (_req, res) => {
+  try {
+    const { syncCouncilBulletins } = require('../services/councilScraperService');
+    const synced = await syncCouncilBulletins();
+    res.json({ message: 'Council sync completed successfully', count: synced.length, items: synced });
+  } catch (err) {
+    console.error('POST /bulletins/sync:', err.message);
+    res.status(500).json({ error: 'Failed to sync council notices' });
+  }
+});
+
 module.exports = router;
