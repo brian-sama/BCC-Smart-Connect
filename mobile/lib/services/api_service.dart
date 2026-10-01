@@ -4,8 +4,8 @@ import '../models/incident_model.dart';
 import 'storage_service.dart';
 
 class ApiService {
-  // Use localhost for Desktop/Web, or 10.0.2.2 for Android Emulator
-  static String baseUrl = 'http://localhost:3000/api';
+  // Live BCC SmartConnect Render Production API
+  static String baseUrl = 'https://bcc-smartconnect-api.onrender.com/api';
 
   /// Submit a new municipal fault or emergency
   static Future<IncidentModel> submitIncident({

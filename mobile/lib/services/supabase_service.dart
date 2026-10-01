@@ -12,15 +12,11 @@ import 'storage_service.dart';
 /// Stores reports locally only after the backend confirms submission.
 class BccApiService {
   // ─── Backend URL ──────────────────────────────────────────────────────────
-  // Override with --dart-define=BCC_API_URL=... for a physical device or production.
+  // Override with --dart-define=BCC_API_URL=... if pointing to a different endpoint.
   static String get baseUrl {
     const envUrl = String.fromEnvironment('BCC_API_URL');
     if (envUrl.isNotEmpty) return envUrl;
-    if (kIsWeb) return 'http://localhost:3000/api';
-    try {
-      if (Platform.isAndroid) return 'http://10.0.2.2:3000/api';
-    } catch (_) {}
-    return 'http://localhost:3000/api';
+    return 'https://bcc-smartconnect-api.onrender.com/api';
   }
 
   static const Duration _timeout = Duration(seconds: 10);
