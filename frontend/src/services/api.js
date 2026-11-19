@@ -190,16 +190,12 @@ export const bccApi = {
     }
   },
 
+  // Throws on failure so the UI never reports an unpublished bulletin as sent
   async createBulletin(bulletin) {
-    try {
-      return await apiFetch('/api/bulletins', {
-        method: 'POST',
-        body: JSON.stringify(bulletin),
-      });
-    } catch (err) {
-      console.error('createBulletin failed:', err.message);
-      return { id: `b-${Date.now()}`, ...bulletin, created_at: new Date().toISOString() };
-    }
+    return apiFetch('/api/bulletins', {
+      method: 'POST',
+      body: JSON.stringify(bulletin),
+    });
   },
 
   // ── WhatsApp & Community Channels ─────────────────────────────────────────

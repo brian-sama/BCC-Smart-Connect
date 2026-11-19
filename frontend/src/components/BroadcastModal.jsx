@@ -57,15 +57,20 @@ export default function BroadcastModal({ onClose, onSendBroadcast }) {
     e.preventDefault();
     if (!title || !body) return;
     
-    await onSendBroadcast({
-      title,
-      body,
-      category,
-      is_urgent: isUrgent,
-      target_type: targetType,
-      target_ward: targetType === 'Zone' ? targetWard : 'All Bulawayo Wards',
-    });
-    
+    try {
+      await onSendBroadcast({
+        title,
+        body,
+        category,
+        is_urgent: isUrgent,
+        target_type: targetType,
+        target_ward: targetType === 'Zone' ? targetWard : 'All Bulawayo Wards',
+      });
+    } catch (err) {
+      window.alert(`The bulletin was not published: ${err.message}. Sign in as BCC staff and try again.`);
+      return;
+    }
+
     setIsSent(true);
     setTimeout(() => {
       onClose();
