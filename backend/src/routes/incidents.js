@@ -44,7 +44,9 @@ const STAFF_ROLES = ['Dispatcher', 'Communications', 'Administrator'];
 
 const upload = multer({
   storage,
-  limits: { fileSize: MAX_PHOTO_BYTES, files: 1 },
+  // busboy treats a file that reaches the limit as truncated, so allow one
+  // extra byte: exactly 5 MB passes, 5 MB + 1 byte is rejected (FR10)
+  limits: { fileSize: MAX_PHOTO_BYTES + 1, files: 1 },
   fileFilter: (_req, file, cb) => {
     if (ALLOWED_PHOTO_TYPES.includes(file.mimetype)) {
       cb(null, true);
@@ -126,6 +128,9 @@ router.post('/', optionalAuth, async (req, res) => {
   const numLng = parseFloat(lng);
   if (isNaN(numLat) || isNaN(numLng)) {
     return res.status(400).json({ error: 'lat and lng must be valid numbers' });
+  }
+  if (numLat < -90 || numLat > 90 || numLng < -180 || numLng > 180) {
+    return res.status(400).json({ error: 'lat must be between -90 and 90 and lng between -180 and 180' });
   }
 
   try {
@@ -414,7 +419,9 @@ router.patch(
               req.params.id,
               `${req.user.first_name || 'Dispatcher'} ${req.user.last_name || ''}`.trim(),
               req.user.role,
-              status || 'Updated',
+              // incident_status is an enum, so log the incident's current status
+              // when only notes were changed ('Updated' is not a valid value)
+              status || incident.status,
               resolution_notes || `Status updated to ${status || 'modified'}.`,
             ]
           );
