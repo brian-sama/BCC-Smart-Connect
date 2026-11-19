@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart' show Geolocator, LocationPermission, LocationSettings, LocationAccuracy;
 import '../constants/bcc_colors.dart';
+import 'package:latlong2/latlong.dart' show LatLng;
 import '../services/supabase_service.dart';
+import 'map_picker_dialog.dart';
 
 class EmergencySosDialog extends StatefulWidget {
   const EmergencySosDialog({super.key});
@@ -52,11 +54,14 @@ class _EmergencySosDialogState extends State<EmergencySosDialog> {
 
     setState(() => _isSending = true);
 
-    double lat = -20.1500;
-    double lng = 28.5800;
+    // Never dispatch with a guessed location: use the device GPS fix, or a
+    // point the resident confirms on the map. The old code silently fell back
+    // to the city centre (-20.15, 28.58) when GPS failed.
+    double? lat;
+    double? lng;
+    bool fromMap = false;
 
     try {
-      // Request permission if needed
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
@@ -66,26 +71,96 @@ class _EmergencySosDialogState extends State<EmergencySosDialog> {
         final pos = await Geolocator.getCurrentPosition(
           locationSettings: const LocationSettings(
             accuracy: LocationAccuracy.high,
-            timeLimit: Duration(seconds: 4),
+            timeLimit: Duration(seconds: 8),
           ),
         );
         lat = pos.latitude;
         lng = pos.longitude;
       }
-    } catch (_) {}
+    } catch (_) {
+      // Fall through to the manual map pin below
+    }
 
-    final incident = await BccApiService.submitIncident(
-      incidentType: emergencyType,
-      description: 'CRITICAL SOS: Citizen triggered emergency dispatch ($label).',
-      address: 'Bulawayo GPS Coords: ${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)}',
-      lat: lat,
-      lng: lng,
+    if (!mounted) return;
+
+    if (lat == null || lng == null) {
+      final picked = await _askForMapPin();
+      if (!mounted) return;
+      if (picked == null) {
+        setState(() => _isSending = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'SOS not sent: no location. Enable GPS or call 999 (ambulance) / 993 (fire).',
+            ),
+          ),
+        );
+        return;
+      }
+      lat = picked.latitude;
+      lng = picked.longitude;
+      fromMap = true;
+    }
+
+    try {
+      final incident = await BccApiService.submitIncident(
+        incidentType: emergencyType,
+        description: 'CRITICAL SOS: Citizen triggered emergency dispatch ($label).'
+            '${fromMap ? ' Location pinned manually on map (GPS unavailable).' : ''}',
+        address:
+            '${fromMap ? 'Map pin' : 'Bulawayo GPS'} Coords: ${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}',
+        lat: lat,
+        lng: lng,
+      );
+      if (!mounted) return;
+      setState(() {
+        _isSending = false;
+        _sentRef = incident.referenceNumber;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _isSending = false);
+      final message = error.toString().replaceFirst('Exception: ', '');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'SOS NOT delivered: $message Call 999 (ambulance) or 993 (fire) now.',
+          ),
+          duration: const Duration(seconds: 8),
+        ),
+      );
+    }
+  }
+
+  /// Asks the resident to drop a pin when GPS is unavailable.
+  /// Returns null if they cancel.
+  Future<LatLng?> _askForMapPin() async {
+    final usePin = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Location unavailable'),
+        content: const Text(
+          'We could not get your GPS location. Drop a pin on the map where help is needed, '
+          'or cancel and call the emergency line directly.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Pick on map'),
+          ),
+        ],
+      ),
     );
-
-    setState(() {
-      _isSending = false;
-      _sentRef = incident.referenceNumber;
-    });
+    if (usePin != true || !mounted) return null;
+    return showDialog<LatLng>(
+      context: context,
+      // Start the picker at Bulawayo City Hall; the resident must move the pin
+      builder: (ctx) => const MapPickerDialog(initialLat: -20.1500, initialLng: 28.5800),
+    );
   }
 
   @override

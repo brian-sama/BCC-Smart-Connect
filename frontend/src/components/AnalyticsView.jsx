@@ -13,9 +13,19 @@ import {
 
 export default function AnalyticsView({ incidents }) {
   const total = incidents.length;
-  const resolved = incidents.filter((i) => i.status === 'Resolved').length;
   const inProgress = incidents.filter((i) => i.status === 'InProgress').length;
-  const slaPercentage = total > 0 ? Math.round((resolved / total) * 100) : 0;
+  // Resolution-time metrics from real timestamps (previously hard-coded)
+  const turnaroundMinutes = (i) =>
+    (new Date(i.resolved_at).getTime() - new Date(i.created_at).getTime()) / 60000;
+  const closed = incidents.filter((i) => i.resolved_at && i.created_at && turnaroundMinutes(i) >= 0);
+  const avg = (list) => (list.length ? list.reduce((sum, i) => sum + turnaroundMinutes(i), 0) / list.length : null);
+  const formatDuration = (mins) =>
+    mins == null ? 'No data yet' : mins < 60 ? `${Math.round(mins)} mins` : `${(mins / 60).toFixed(1)} hrs`;
+  const avgTurnaround = formatDuration(avg(closed));
+  const avgEmergency = formatDuration(avg(closed.filter((i) => i.is_emergency)));
+  // SLA compliance: share of resolved incidents closed within their SLA target
+  const withinSla = closed.filter((i) => i.sla_target_minutes && turnaroundMinutes(i) <= i.sla_target_minutes).length;
+  const slaPercentage = closed.length > 0 ? Math.round((withinSla / closed.length) * 100) : 0;
 
   // Department distribution
   const depts = [
@@ -96,8 +106,8 @@ export default function AnalyticsView({ incidents }) {
           </div>
           <div>
             <span style={styles.statLabel}>Average Turnaround</span>
-            <h3 style={styles.statValue}>3.8 hrs</h3>
-            <span style={styles.statSub}>Emergency dispatch: 14 mins</span>
+            <h3 style={styles.statValue}>{avgTurnaround}</h3>
+            <span style={styles.statSub}>Emergencies: {avgEmergency}</span>
           </div>
         </div>
 
