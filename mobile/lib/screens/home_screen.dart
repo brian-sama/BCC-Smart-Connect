@@ -345,7 +345,13 @@ class _HomeScreenState extends State<HomeScreen> {
                     _buildBulletinCategoryChips(),
                     const SizedBox(height: 16),
 
-                    // 4. Feed List / Loading / Empty State
+                    // 4. Water Situation & Reservoir Status Card (from citybyo.co.zw)
+                    if (_bulletinCategory == 'All' || _bulletinCategory == 'Water Cut') ...[
+                      _buildWaterSituationCard(),
+                      const SizedBox(height: 16),
+                    ],
+
+                    // 5. Feed List / Loading / Empty State
                     if (_isLoadingBulletins)
                       const Center(
                         child: Padding(
@@ -367,6 +373,159 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildWaterSituationCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFBAE6FD), width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0284C7).withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE0F2FE),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.water_drop_rounded, color: Color(0xFF0284C7), size: 20),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Live Water Situation & Dam Inflows',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        color: BccColors.textDark,
+                      ),
+                    ),
+                    Text(
+                      'City of Bulawayo Daily Supply Status',
+                      style: TextStyle(fontSize: 11, color: BccColors.textMuted),
+                    ),
+                  ],
+                ),
+              ),
+              InkWell(
+                onTap: () async {
+                  final uri = Uri.parse('https://citybyo.co.zw/Services/WaterSituationUpdate');
+                  if (await canLaunchUrl(uri)) {
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  }
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'citybyo.co.zw',
+                        style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF0284C7)),
+                      ),
+                      SizedBox(width: 3),
+                      Icon(Icons.open_in_new_rounded, size: 11, color: Color(0xFF0284C7)),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+
+          // Reservoir Status Progress Bars
+          _buildReservoirBar('Criterion Waterworks', 0.41, '41% — Operational'),
+          const SizedBox(height: 8),
+          _buildReservoirBar('Magwegwe Reservoir', 0.38, '38% — Pumping Active'),
+          const SizedBox(height: 8),
+          _buildReservoirBar('Tuli Hill Reservoir', 0.35, '35% — 48-hr Shedding Zone'),
+
+          const SizedBox(height: 14),
+          const Divider(height: 1, color: Color(0xFFF1F5F9)),
+          const SizedBox(height: 10),
+
+          // Schedule Footer & Link
+          Row(
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: const BoxDecoration(
+                  color: Color(0xFF16A34A),
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 6),
+              const Expanded(
+                child: Text(
+                  'Today: Zone 4 Scheduled Supply Open',
+                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF15803D)),
+                ),
+              ),
+              InkWell(
+                onTap: () async {
+                  final uri = Uri.parse('https://citybyo.co.zw/Services/WaterSituationUpdate');
+                  if (await canLaunchUrl(uri)) {
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  }
+                },
+                child: const Text(
+                  'Full Report ↗',
+                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF0284C7)),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReservoirBar(String name, double percent, String label) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(name, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF334155))),
+            Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF0284C7))),
+          ],
+        ),
+        const SizedBox(height: 4),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: LinearProgressIndicator(
+            value: percent,
+            minHeight: 6,
+            backgroundColor: const Color(0xFFE2E8F0),
+            valueColor: AlwaysStoppedAnimation<Color>(
+              percent > 0.4 ? const Color(0xFF0284C7) : (percent > 0.3 ? const Color(0xFFF59E0B) : const Color(0xFFEF4444)),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
