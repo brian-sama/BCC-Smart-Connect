@@ -35,17 +35,44 @@ const storage = multer.diskStorage({
   },
 });
 
+const MAX_PHOTO_BYTES = 5 * 1024 * 1024; // FR10: photo attachments up to 5 MB
+const ALLOWED_PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
+// Anonymous reporters may attach a photo only shortly after submitting,
+// and only once; staff can replace evidence at any time.
+const ANON_UPLOAD_WINDOW_MINUTES = 30;
+const STAFF_ROLES = ['Dispatcher', 'Communications', 'Administrator'];
+
 const upload = multer({
   storage,
-  limits: { fileSize: 15 * 1024 * 1024 }, // 15MB limit
+  limits: { fileSize: MAX_PHOTO_BYTES, files: 1 },
   fileFilter: (_req, file, cb) => {
-    if (file.mimetype.startsWith('image/') || file.mimetype.startsWith('video/')) {
+    if (ALLOWED_PHOTO_TYPES.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error('Only image and video files are supported.'));
+      const err = new Error('Only JPEG, PNG, WebP or HEIC photos are accepted.');
+      err.code = 'UNSUPPORTED_FILE_TYPE';
+      cb(err);
     }
   },
 });
+
+// Wraps multer so upload errors return clear 4xx responses instead of a generic 500
+function uploadSinglePhoto(req, res, next) {
+  upload.single('file')(req, res, (err) => {
+    if (!err) return next();
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({ error: 'Photo must be 5 MB or smaller.' });
+    }
+    if (err.code === 'UNSUPPORTED_FILE_TYPE') {
+      return res.status(415).json({ error: err.message });
+    }
+    return res.status(400).json({ error: err.message || 'Invalid upload.' });
+  });
+}
+
+function removeUploadedFile(file) {
+  if (file?.path) fs.unlink(file.path, () => {});
+}
 
 function generateReference() {
   const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
@@ -201,8 +228,8 @@ router.post('/', optionalAuth, async (req, res) => {
   }
 });
 
-// ─── GET /api/incidents — paginated list (open to Dispatcher+ but also supports no auth with fallback) ──
-router.get('/', optionalAuth, async (req, res) => {
+// ─── GET /api/incidents — paginated list (BCC staff only: contains reporter contact details) ──
+router.get('/', authenticate, requireRole(...STAFF_ROLES), async (req, res) => {
   const { status, type, page = 1, limit = 50, emergency } = req.query;
   const filters = [];
   const params  = [];
@@ -212,7 +239,9 @@ router.get('/', optionalAuth, async (req, res) => {
   if (emergency) { params.push(true);       filters.push(`i.is_emergency = $${params.length}`); }
 
   const where = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
-  params.push(Number(limit), (Number(page) - 1) * Number(limit));
+  const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 200);
+  const safePage  = Math.max(parseInt(page, 10) || 1, 1);
+  params.push(safeLimit, (safePage - 1) * safeLimit);
 
   try {
     const { rows } = await pool.query(
@@ -292,8 +321,8 @@ router.get('/my', optionalAuth, async (req, res) => {
   }
 });
 
-// ─── GET /api/incidents/:id — full incident detail (authenticated) ───────────
-router.get('/:id', authenticate, async (req, res) => {
+// ─── GET /api/incidents/:id — full incident detail (BCC staff only) ──────────
+router.get('/:id', authenticate, requireRole(...STAFF_ROLES), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT id, reference_number, incident_type, status, description, address,
@@ -428,22 +457,44 @@ router.patch(
 );
 
 // ─── POST /api/incidents/:id/media — upload photo evidence ───────────────────
-router.post('/:id/media', optionalAuth, upload.single('file'), async (req, res) => {
+// Staff may attach or replace evidence on any incident. Residents (including
+// anonymous reporters) may attach ONE photo to an incident within
+// ANON_UPLOAD_WINDOW_MINUTES of submitting it, so a stranger cannot overwrite
+// the evidence on someone else's report.
+router.post('/:id/media', optionalAuth, uploadSinglePhoto, async (req, res) => {
   if (!req.file) {
-    return res.status(400).json({ error: 'No media file provided.' });
+    return res.status(400).json({ error: 'No photo file provided.' });
   }
 
   const incidentId = req.params.id;
   const fileUrl = `/uploads/${req.file.filename}`;
+  const isStaff = STAFF_ROLES.includes(req.user?.role);
 
   try {
-    // Update photo_url on incident (store last uploaded photo URL directly)
-    await pool.query(
-      'UPDATE incidents SET photo_url = $1, updated_at = NOW() WHERE id = $2',
-      [fileUrl, incidentId]
+    const { rows } = await pool.query(
+      `UPDATE incidents
+          SET photo_url = $1, updated_at = NOW()
+        WHERE id = $2
+          AND ($3::boolean
+               OR (photo_url IS NULL
+                   AND created_at >= NOW() - ($4 || ' minutes')::interval))
+        RETURNING id`,
+      [fileUrl, incidentId, isStaff, String(ANON_UPLOAD_WINDOW_MINUTES)]
     );
+    if (!rows.length) {
+      removeUploadedFile(req.file);
+      const exists = await pool.query('SELECT 1 FROM incidents WHERE id = $1', [incidentId]);
+      if (!exists.rows.length) return res.status(404).json({ error: 'Incident not found' });
+      return res.status(403).json({
+        error: 'A photo can only be added to a new report once, shortly after it is submitted.',
+      });
+    }
     res.status(201).json({ url: fileUrl });
   } catch (err) {
+    removeUploadedFile(req.file);
+    if (err.code === '22P02') {
+      return res.status(404).json({ error: 'Incident not found' });
+    }
     console.error('POST /incidents/:id/media:', err.message);
     res.status(500).json({ error: 'Failed to save media attachment.' });
   }

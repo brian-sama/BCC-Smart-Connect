@@ -17,7 +17,14 @@ import IncidentQueueView from './components/IncidentQueueView';
 import AnalyticsView from './components/AnalyticsView';
 import FieldTeamsView from './components/FieldTeamsView';
 import WhatsAppChannelsModal from './components/WhatsAppChannelsModal';
-import { bccApi } from './services/api';
+import { bccApi, getSavedUser } from './services/api';
+
+// Map the stored session user (if any) to the shape the TopBar expects
+function sessionUser() {
+  const u = getSavedUser();
+  if (!u) return { name: 'Not signed in', role: 'Sign in to manage incidents', email: '' };
+  return { name: `${u.first_name ?? ''} ${u.last_name ?? ''}`.trim() || u.email, role: u.role, email: u.email ?? '' };
+}
 
 export default function App() {
   const [incidents, setIncidents] = useState([]);
@@ -29,11 +36,9 @@ export default function App() {
   const [isBroadcastOpen, setIsBroadcastOpen] = useState(false);
   const [isWhatsAppOpen, setIsWhatsAppOpen] = useState(false);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
-  const [currentUser, setCurrentUser] = useState({
-    name: 'Eng. S. Khumalo',
-    role: 'Chief Dispatcher',
-    email: 'dispatcher@cityofbulawayo.co.zw',
-  });
+  const [currentUser, setCurrentUser] = useState(sessionUser);
+  // Bumped after sign-in so incidents are re-fetched with the new token
+  const [sessionVersion, setSessionVersion] = useState(0);
   const [emergencyBanner, setEmergencyBanner] = useState(null);
 
   // 1. Initial Data Fetch & Real-time Live Sync
@@ -83,17 +88,26 @@ export default function App() {
       isMounted = false;
       unsubscribe();
     };
-  }, []);
+  }, [sessionVersion]);
 
   // 2. Incident Update Handler (Persisted to Cloud)
   const handleUpdateStatus = async (id, updates) => {
+    const previous = incidents.find((item) => item.id === id);
     // Optimistic UI update
     setIncidents((prev) =>
       prev.map((item) => (item.id === id ? { ...item, ...updates } : item))
     );
 
-    // Cloud persistence
-    await bccApi.updateIncident(id, updates);
+    // Cloud persistence — roll back and tell the dispatcher if it fails
+    try {
+      const saved = await bccApi.updateIncident(id, updates);
+      setIncidents((prev) => prev.map((item) => (item.id === id ? { ...item, ...saved } : item)));
+    } catch (err) {
+      if (previous) {
+        setIncidents((prev) => prev.map((item) => (item.id === id ? previous : item)));
+      }
+      window.alert(`The update was not saved: ${err.message}. Please sign in as BCC staff and try again.`);
+    }
   };
 
   // 3. Send Broadcast Handler (Persisted to Cloud)
@@ -306,7 +320,10 @@ export default function App() {
       <LoginModal
         isOpen={isLoginOpen}
         onClose={() => setIsLoginOpen(false)}
-        onLogin={(userData) => setCurrentUser(userData)}
+        onLogin={(userData) => {
+          setCurrentUser(userData);
+          setSessionVersion((v) => v + 1);
+        }}
       />
     </div>
   );

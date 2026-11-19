@@ -66,6 +66,14 @@ function getSocket() {
   return _socket;
 }
 
+// Drop the current socket so the next subscription reconnects with the new token
+function resetSocket() {
+  if (_socket) {
+    _socket.disconnect();
+    _socket = null;
+  }
+}
+
 // ─── Main API object ─────────────────────────────────────────────────────────
 export const bccApi = {
   // Check if backend is reachable
@@ -86,6 +94,7 @@ export const bccApi = {
     });
     setToken(data.access);
     setUser(data.user);
+    resetSocket();
     return data;
   },
 
@@ -96,6 +105,7 @@ export const bccApi = {
     });
     setToken(data.access);
     setUser(data.user);
+    resetSocket();
     return data;
   },
 
@@ -103,6 +113,7 @@ export const bccApi = {
     const data = await apiFetch('/api/auth/guest', { method: 'POST' });
     setToken(data.access);
     setUser(data.user);
+    resetSocket();
     return data;
   },
 
@@ -126,16 +137,12 @@ export const bccApi = {
     }
   },
 
+  // Throws on failure so the caller can roll back its optimistic update
   async updateIncident(id, updates) {
-    try {
-      return await apiFetch(`/api/incidents/${id}`, {
-        method: 'PATCH',
-        body: JSON.stringify(updates),
-      });
-    } catch (err) {
-      console.error('updateIncident failed:', err.message);
-      return updates;
-    }
+    return apiFetch(`/api/incidents/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(updates),
+    });
   },
 
   async getIncidentByRef(reference) {
