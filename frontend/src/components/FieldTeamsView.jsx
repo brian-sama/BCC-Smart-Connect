@@ -120,13 +120,14 @@ export default function FieldTeamsView({ teams, incidents, onSelectIncident }) {
 
               {/* Contact Footer */}
               <div style={styles.cardFooter}>
-                <a
-                  href={`tel:${team.phone || '+263292275011'}`}
-                  style={styles.phoneBtn}
-                >
-                  <Phone size={14} />
-                  <span>Call Crew ({team.phone || '+263 2922 75011'})</span>
-                </a>
+                {team.phone ? (
+                  <a href={`tel:${team.phone}`} style={styles.phoneBtn}>
+                    <Phone size={14} />
+                    <span>Call Crew ({team.phone})</span>
+                  </a>
+                ) : (
+                  <span style={styles.standbyText}>No verified crew contact available</span>
+                )}
               </div>
             </div>
           );

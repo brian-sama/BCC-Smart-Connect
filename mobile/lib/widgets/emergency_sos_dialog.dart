@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart' show Geolocator, LocationPermission, LocationSettings, LocationAccuracy;
 import '../constants/bcc_colors.dart';
 import 'package:latlong2/latlong.dart' show LatLng;
+import 'package:url_launcher/url_launcher.dart';
+import '../constants/bulawayo_data.dart';
 import '../services/supabase_service.dart';
 import 'map_picker_dialog.dart';
 
@@ -16,6 +18,12 @@ class _EmergencySosDialogState extends State<EmergencySosDialog> {
   bool _isSending = false;
   String? _sentRef;
 
+  Future<void> _callNumber(String number) async {
+    final dialable = number.replaceAll(RegExp(r'[^+0-9]'), '');
+    final uri = Uri(scheme: 'tel', path: dialable);
+    if (await canLaunchUrl(uri)) await launchUrl(uri);
+  }
+
   Future<void> _confirmAndSendAlert(String emergencyType, String label) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -25,11 +33,11 @@ class _EmergencySosDialogState extends State<EmergencySosDialog> {
           children: [
             const Icon(Icons.warning_amber_rounded, color: BccColors.emergencyRed),
             const SizedBox(width: 8),
-            Text('Dispatch $label?'),
+            Text('Submit $label report?'),
           ],
         ),
         content: Text(
-          'This will send an immediate critical alert with your current GPS coordinates to BCC emergency dispatchers.',
+          'This submits an emergency report to SmartConnect. Submission does not confirm that a dispatcher has received it or that a response unit has been sent. Call your verified emergency service directly.',
           style: const TextStyle(fontSize: 13, height: 1.4),
         ),
         actions: [
@@ -59,6 +67,7 @@ class _EmergencySosDialogState extends State<EmergencySosDialog> {
     // to the city centre (-20.15, 28.58) when GPS failed.
     double? lat;
     double? lng;
+    double? accuracyMeters;
     bool fromMap = false;
 
     try {
@@ -76,6 +85,7 @@ class _EmergencySosDialogState extends State<EmergencySosDialog> {
         );
         lat = pos.latitude;
         lng = pos.longitude;
+        accuracyMeters = pos.accuracy;
       }
     } catch (_) {
       // Fall through to the manual map pin below
@@ -91,7 +101,7 @@ class _EmergencySosDialogState extends State<EmergencySosDialog> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'SOS not sent: no location. Enable GPS or call 999 (ambulance) / 993 (fire).',
+              'Report not sent: no location. Enable GPS or select a map pin, then call your verified emergency service directly.',
             ),
           ),
         );
@@ -111,6 +121,9 @@ class _EmergencySosDialogState extends State<EmergencySosDialog> {
             '${fromMap ? 'Map pin' : 'Bulawayo GPS'} Coords: ${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}',
         lat: lat,
         lng: lng,
+        locationSource: fromMap ? 'manual_pin' : 'gps',
+        locationAccuracyMeters: accuracyMeters,
+        locationCapturedAt: DateTime.now().toUtc(),
       );
       if (!mounted) return;
       setState(() {
@@ -124,7 +137,7 @@ class _EmergencySosDialogState extends State<EmergencySosDialog> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'SOS NOT delivered: $message Call 999 (ambulance) or 993 (fire) now.',
+            'Report not submitted: $message. Call your verified emergency service directly if this is urgent.',
           ),
           duration: const Duration(seconds: 8),
         ),
@@ -193,7 +206,7 @@ class _EmergencySosDialogState extends State<EmergencySosDialog> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Emergency Dispatch',
+                        'Emergency report',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
@@ -217,6 +230,44 @@ class _EmergencySosDialogState extends State<EmergencySosDialog> {
               ],
             ),
             const SizedBox(height: 18),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: BccColors.emergencyRedSoft,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Call BCC Fire and Ambulance directly',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      for (final number in [
+                        BulawayoData.emergencyHotlines['Fire and Ambulance']!,
+                        BulawayoData.emergencyHotlines['Fire and Ambulance (alternate)']!,
+                        BulawayoData.emergencyHotlines['Fire and Ambulance (all networks)']!,
+                      ])
+                        TextButton.icon(
+                          onPressed: () => _callNumber(number),
+                          icon: const Icon(Icons.call, size: 16),
+                          label: Text(number),
+                        ),
+                    ],
+                  ),
+                  const Text(
+                    'Numbers published by the City of Bulawayo; verified 21 Nov 2026. '
+                    'Submitting this app report does not contact these numbers.',
+                    style: TextStyle(fontSize: 10, height: 1.3),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
             if (_sentRef != null) ...[
               Container(
                 padding: const EdgeInsets.all(16),
@@ -236,7 +287,7 @@ class _EmergencySosDialogState extends State<EmergencySosDialog> {
                     ),
                     const SizedBox(height: 8),
                     const Text(
-                      'Emergency Alert Broadcasted!',
+                      'Emergency report submitted',
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 15,
@@ -254,7 +305,7 @@ class _EmergencySosDialogState extends State<EmergencySosDialog> {
                     ),
                     const SizedBox(height: 6),
                     const Text(
-                      'Council dispatchers have been alerted with your live GPS location. Units are en route.',
+                      'This confirms the report was submitted to SmartConnect only. It does not confirm dispatcher acknowledgement or that a response unit is on the way. Call your verified emergency service directly.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 12,
@@ -275,16 +326,16 @@ class _EmergencySosDialogState extends State<EmergencySosDialog> {
                 )
               else ...[
                 _buildEmergencyButton(
-                  title: 'Medical Ambulance (999)',
-                  subtitle: '+263 2922 71717 / Famona Station',
+                  title: 'Medical emergency',
+                  subtitle: 'Call the locally verified emergency number',
                   icon: Icons.medical_services_rounded,
                   color: const Color(0xFFD32F2F),
                   onTap: () => _confirmAndSendAlert('Ambulance', 'Medical Ambulance'),
                 ),
                 const SizedBox(height: 10),
                 _buildEmergencyButton(
-                  title: 'Fire Brigade (993)',
-                  subtitle: '+263 2922 71718 / Famona & North End',
+                  title: 'Fire emergency',
+                  subtitle: 'Call the locally verified emergency number',
                   icon: Icons.local_fire_department_rounded,
                   color: const Color(0xFFE65100),
                   onTap: () => _confirmAndSendAlert('Fire', 'Fire Brigade'),

@@ -1,44 +1,22 @@
 import React, { useState } from 'react';
-import { X, Send, Radio, AlertCircle, CheckCircle2, MessageCircle, Copy, Share2, ExternalLink } from 'lucide-react';
-import { bccApi } from '../services/api';
+import { X, Send, Radio, CheckCircle2, MessageCircle, Copy } from 'lucide-react';
 
 export default function BroadcastModal({ onClose, onSendBroadcast }) {
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [category, setCategory] = useState('Water Cut');
-  const [targetType, setTargetType] = useState('All');
-  const [targetWard, setTargetWard] = useState('Cowdray Park (Ward 28)');
   const [isUrgent, setIsUrgent] = useState(false);
   const [isSent, setIsSent] = useState(false);
   const [copied, setCopied] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
 
-  const formatMessageForWhatsApp = () => {
-    const urgentTag = isUrgent ? '🚨 *CRITICAL MUNICIPAL ADVISORY*' : '📢 *PUBLIC MUNICIPAL NOTICE*';
-    const scopeTag = targetType === 'Zone' ? `📍 *Area:* ${targetWard}` : '📍 *Area:* City of Bulawayo (All Wards)';
-    const categoryTag = `📂 *Category:* ${category}`;
-    const dateTag = `🕒 *Issued:* ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
-
-    return [
-      `🏛️ *CITY OF BULAWAYO — SMARTCONNECT*`,
-      urgentTag,
-      `━━━━━━━━━━━━━━━━━━`,
-      `📌 *${title || 'Municipal Advisory'}*`,
-      scopeTag,
-      categoryTag,
-      dateTag,
-      `━━━━━━━━━━━━━━━━━━`,
-      ``,
-      `${body || 'Advisory details...'}`,
-      ``,
-      `━━━━━━━━━━━━━━━━━━`,
-      `📢 *Follow Official Updates on WhatsApp:*`,
-      `https://whatsapp.com/channel/0029VbA48WT1iUxQRxulvU41`,
-      `💬 *Customer Care (0784 136 505):* https://wa.me/263784136505`,
-      `💧 *Water Meter Readings (0713 347 319):* https://wa.me/263713347319`,
-      `📲 *BCC SmartConnect Citizen Portal*`
-    ].join('\n');
-  };
+  const formatMessageForWhatsApp = () => [
+    'DRAFT NOTICE - NOT APPROVED OR DISTRIBUTED',
+    title || 'Notice title',
+    `Category: ${category}`,
+    'Audience: All wards (draft only)',
+    body || 'Notice details',
+  ].join(String.fromCharCode(10));
 
   const handleCopyWhatsApp = async () => {
     const text = formatMessageForWhatsApp();
@@ -47,11 +25,6 @@ export default function BroadcastModal({ onClose, onSendBroadcast }) {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleShareWhatsApp = () => {
-    const text = formatMessageForWhatsApp();
-    const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
-    window.open(url, '_blank', 'noopener,noreferrer');
-  };
 
   const handleSend = async (e) => {
     e.preventDefault();
@@ -63,11 +36,11 @@ export default function BroadcastModal({ onClose, onSendBroadcast }) {
         body,
         category,
         is_urgent: isUrgent,
-        target_type: targetType,
-        target_ward: targetType === 'Zone' ? targetWard : 'All Bulawayo Wards',
+        target_type: 'All',
+        target_ward: 'All Bulawayo Wards',
       });
     } catch (err) {
-      window.alert(`The bulletin was not published: ${err.message}. Sign in as BCC staff and try again.`);
+      window.alert(`The notice draft was not saved: ${err.message}. Sign in as BCC staff and try again.`);
       return;
     }
 
@@ -86,8 +59,8 @@ export default function BroadcastModal({ onClose, onSendBroadcast }) {
               <Radio size={18} color="#0C3827" />
             </div>
             <div>
-              <h3 style={styles.title}>Send Public Municipal Alert</h3>
-              <p style={styles.subtitle}>Push to Citizen App, SMS, and WhatsApp Channels</p>
+              <h3 style={styles.title}>Create notice draft</h3>
+              <p style={styles.subtitle}>Saving a draft does not publish or distribute it</p>
             </div>
           </div>
           <button style={styles.closeBtn} onClick={onClose} aria-label="Close">
@@ -98,16 +71,16 @@ export default function BroadcastModal({ onClose, onSendBroadcast }) {
         {isSent ? (
           <div style={styles.successBox}>
             <CheckCircle2 size={54} color="#16A34A" />
-            <h4 style={styles.successTitle}>Broadcast Transmitted!</h4>
+            <h4 style={styles.successTitle}>Draft saved</h4>
             <p style={styles.successDesc}>
-              Emergency bulletin queued and broadcasted across citizen devices, push notifications, and ready for WhatsApp channel distribution.
+              The notice is saved for review. No residents were notified and no external channel was contacted.
             </p>
           </div>
         ) : (
           <form onSubmit={handleSend} style={styles.form}>
             <div style={styles.row}>
               <div style={{ ...styles.field, flex: 2 }}>
-                <label style={styles.label}>Broadcast Title</label>
+                <label style={styles.label}>Notice title</label>
                 <input
                   type="text"
                   placeholder="e.g. Criterion Water Works Emergency Maintenance"
@@ -137,25 +110,7 @@ export default function BroadcastModal({ onClose, onSendBroadcast }) {
             <div style={styles.field}>
               <label style={styles.label}>Audience Scope</label>
               <div style={styles.scopeRow}>
-                <label style={styles.radioLabel}>
-                  <input
-                    type="radio"
-                    name="scope"
-                    checked={targetType === 'All'}
-                    onChange={() => setTargetType('All')}
-                  />
-                  <span>All Bulawayo Residents</span>
-                </label>
-                <label style={styles.radioLabel}>
-                  <input
-                    type="radio"
-                    name="scope"
-                    checked={targetType === 'Zone'}
-                    onChange={() => setTargetType('Zone')}
-                  />
-                  <span>Specific Suburb / Ward</span>
-                </label>
-
+                <span style={styles.radioLabel}>All wards (draft only)</span>
                 <label style={{ ...styles.radioLabel, marginLeft: 'auto' }}>
                   <input
                     type="checkbox"
@@ -169,39 +124,20 @@ export default function BroadcastModal({ onClose, onSendBroadcast }) {
               </div>
             </div>
 
-            {targetType === 'Zone' && (
-              <div style={styles.field}>
-                <label style={styles.label}>Target Suburb / Ward</label>
-                <select
-                  value={targetWard}
-                  onChange={(e) => setTargetWard(e.target.value)}
-                  style={styles.select}
-                >
-                  <option value="Cowdray Park (Ward 28)">Cowdray Park (Ward 28)</option>
-                  <option value="Nkulumane (Wards 20-23)">Nkulumane (Wards 20-23)</option>
-                  <option value="Bradfield & Hillside (Ward 4)">Bradfield & Hillside (Ward 4)</option>
-                  <option value="Luveve & Magwegwe (Wards 14-16)">Luveve & Magwegwe (Wards 14-16)</option>
-                  <option value="Pumula North & South (Wards 17, 19)">Pumula North & South (Wards 17, 19)</option>
-                  <option value="City Centre & Suburbs (Ward 1)">City Centre & Suburbs (Ward 1)</option>
-                  <option value="Makokoba & Mzilikazi (Ward 7)">Makokoba & Mzilikazi (Ward 7)</option>
-                </select>
-              </div>
-            )}
-
             <div style={styles.field}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <label style={styles.label}>Broadcast Message Body</label>
+                <label style={styles.label}>Draft notice body</label>
                 <button
                   type="button"
                   style={styles.togglePreviewBtn}
                   onClick={() => setPreviewOpen(!previewOpen)}
                 >
                   <MessageCircle size={14} color="#25D366" />
-                  <span>{previewOpen ? 'Hide WhatsApp Preview' : 'WhatsApp Preview'}</span>
+                  <span>{previewOpen ? 'Hide Draft Preview' : 'Draft Preview'}</span>
                 </button>
               </div>
               <textarea
-                placeholder="Type the full advisory message to be pushed to citizens..."
+                placeholder="Write a notice draft for staff review..."
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
                 required
@@ -215,7 +151,7 @@ export default function BroadcastModal({ onClose, onSendBroadcast }) {
                 <div style={styles.whatsappHeader}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <MessageCircle size={16} color="#25D366" />
-                    <span style={styles.whatsappCardTitle}>WhatsApp Channel / Group Preview</span>
+                    <span style={styles.whatsappCardTitle}>Draft text preview</span>
                   </div>
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <button
@@ -226,14 +162,6 @@ export default function BroadcastModal({ onClose, onSendBroadcast }) {
                       <Copy size={13} />
                       <span>{copied ? 'Copied!' : 'Copy Text'}</span>
                     </button>
-                    <button
-                      type="button"
-                      style={styles.shareNowBtn}
-                      onClick={handleShareWhatsApp}
-                    >
-                      <Share2 size={13} />
-                      <span>Share to WhatsApp</span>
-                    </button>
                   </div>
                 </div>
                 <pre style={styles.whatsappPreviewText}>{formatMessageForWhatsApp()}</pre>
@@ -241,25 +169,13 @@ export default function BroadcastModal({ onClose, onSendBroadcast }) {
             )}
 
             <div style={styles.footer}>
-              <div style={styles.leftFooterActions}>
-                <button
-                  type="button"
-                  style={styles.whatsappDirectBtn}
-                  onClick={handleShareWhatsApp}
-                  title="Open in WhatsApp Web or Mobile to post directly to official channels"
-                >
-                  <MessageCircle size={15} color="#25D366" />
-                  <span>Share to WhatsApp</span>
-                </button>
-              </div>
-
               <div style={{ display: 'flex', gap: '10px' }}>
                 <button type="button" style={styles.cancelBtn} onClick={onClose}>
                   Cancel
                 </button>
                 <button type="submit" style={styles.sendBtn}>
                   <Send size={15} />
-                  <span>Transmit Broadcast</span>
+                  <span>Save Draft</span>
                 </button>
               </div>
             </div>
@@ -446,19 +362,6 @@ const styles = {
     gap: '4px',
     cursor: 'pointer',
   },
-  shareNowBtn: {
-    backgroundColor: '#25D366',
-    border: 'none',
-    borderRadius: '8px',
-    padding: '4px 10px',
-    fontSize: '11px',
-    fontWeight: '700',
-    color: '#FFFFFF',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '4px',
-    cursor: 'pointer',
-  },
   whatsappPreviewText: {
     fontSize: '11.5px',
     color: '#14532D',
@@ -478,24 +381,6 @@ const styles = {
     justifyContent: 'space-between',
     alignItems: 'center',
     marginTop: '6px',
-  },
-  leftFooterActions: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-  },
-  whatsappDirectBtn: {
-    padding: '9px 14px',
-    borderRadius: '12px',
-    fontSize: '12.5px',
-    fontWeight: '700',
-    color: '#0C3827',
-    backgroundColor: '#E8F5E9',
-    border: '1px solid #A7F3D0',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-    cursor: 'pointer',
   },
   cancelBtn: {
     padding: '10px 16px',

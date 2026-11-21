@@ -38,13 +38,16 @@ class BulawayoData {
     'Woodlands',
   ];
 
+  // Published by the City of Bulawayo in Masiyephambili Weekly, 6–12 Nov 2026.
+  // The same notice retains 993/994 for landlines and (02922) 71717–9 for all networks.
+  static const String emergencyContactsSource =
+      'https://www.citybyo.co.zw/Downloads/GetNewsletter?fileShortName=MasiyephambiliWeeklyNews6to12November2026.pdf';
+  static const String emergencyContactsReviewed = '2026-11-21';
   static const Map<String, String> emergencyHotlines = {
-    'Ambulance': '999',
-    'Ambulance (Direct)': '+263 2922 71717',
-    'Fire Brigade': '993',
-    'Fire Brigade (Direct)': '+263 2922 71718',
-    'Police (ZRP)': '995',
-    'BCC Water Faults': '+263 2922 75011',
-    'BCC Call Centre': '+263 2922 75012',
+    'Fire and Ambulance': '+263 781 593 433',
+    'Fire and Ambulance (alternate)': '+263 711 715 132',
+    'Fire and Ambulance (landline)': '993 / 994',
+    'Fire and Ambulance (all networks)': '(02922) 71717-9',
+    'BCC Call Centre': '(02922) 71290',
   };
 }

@@ -46,7 +46,7 @@ router.post('/login', async (req, res) => {
   if (!email || !password) return res.status(400).json({ error: 'email and password are required' });
   try {
     const { rows } = await pool.query(
-      'SELECT id, first_name, last_name, email, role, password_hash FROM users WHERE email = $1',
+      'SELECT id, first_name, last_name, email, role, password_hash FROM users WHERE email = $1 AND is_active = true',
       [email.toLowerCase()]
     );
     const user = rows[0];
@@ -86,7 +86,7 @@ router.post('/refresh', async (req, res) => {
   try {
     const decoded = jwt.verify(refresh, process.env.JWT_REFRESH_SECRET);
     const { rows } = await pool.query(
-      'SELECT id, email, role FROM users WHERE id = $1',
+      'SELECT id, email, role FROM users WHERE id = $1 AND is_active = true',
       [decoded.id]
     );
     if (!rows.length) return res.status(401).json({ error: 'Account not found' });

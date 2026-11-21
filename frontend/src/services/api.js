@@ -79,8 +79,8 @@ export const bccApi = {
   // Check if backend is reachable
   async isReachable() {
     try {
-      await fetch(`${API_BASE}/health`);
-      return true;
+      const response = await fetch(`${API_BASE}/health/ready`);
+      return response.ok;
     } catch {
       return false;
     }
@@ -128,13 +128,8 @@ export const bccApi = {
 
   // ── Incidents ──────────────────────────────────────────────────────────────
   async getIncidents() {
-    try {
-      const data = await apiFetch('/api/incidents');
-      return Array.isArray(data) ? data : [];
-    } catch (err) {
-      console.warn('getIncidents failed:', err.message);
-      return [];
-    }
+    const data = await apiFetch('/api/incidents');
+    return Array.isArray(data) ? data : [];
   },
 
   // Throws on failure so the caller can roll back its optimistic update
@@ -163,13 +158,8 @@ export const bccApi = {
 
   // ── Field Teams ────────────────────────────────────────────────────────────
   async getFieldTeams() {
-    try {
-      const data = await apiFetch('/api/teams');
-      return Array.isArray(data) ? data : [];
-    } catch (err) {
-      console.warn('getFieldTeams failed:', err.message);
-      return [];
-    }
+    const data = await apiFetch('/api/teams');
+    return Array.isArray(data) ? data : [];
   },
 
   async updateTeam(id, updates) {
@@ -226,14 +216,8 @@ export const bccApi = {
         method: 'POST',
         body: JSON.stringify(broadcast),
       });
-    } catch {
-      // Offline fallback formatter
-      const text = `🏛️ *CITY OF BULAWAYO — SMARTCONNECT*\n📢 *PUBLIC NOTICE*\n━━━━━━━━━━━━━━━━━━\n📌 *${broadcast.title}*\n📍 *Area:* ${broadcast.target_ward || 'All Wards'}\n\n${broadcast.body}\n━━━━━━━━━━━━━━━━━━\n📢 Official Channel: https://whatsapp.com/channel/0029VbA48WT1iUxQRxulvU41\n💬 Customer Care (0784 136 505): https://wa.me/263784136505\n💧 Water Meter Readings (0713 347 319): https://wa.me/263713347319`;
-      return {
-        formattedMessage: text,
-        shareUrl: `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`,
-        webShareUrl: `https://web.whatsapp.com/send?text=${encodeURIComponent(text)}`,
-      };
+    } catch (error) {
+      throw new Error(`Could not prepare a manual share message: ${error.message}`);
     }
   },
 
@@ -241,24 +225,8 @@ export const bccApi = {
     try {
       const query = new URLSearchParams(params).toString();
       return await apiFetch(`/api/whatsapp/support-link?${query}`);
-    } catch {
-      if (params.purpose === 'meter_reading') {
-        const text = 'Hello City of Bulawayo,\n\nI am submitting my monthly water meter reading.\nAccount No: \nAddress: \nMeter Reading: ';
-        return {
-          phoneNumber: '+263 71 334 7319',
-          whatsappUrl: `https://wa.me/263713347319?text=${encodeURIComponent(text)}`,
-          text,
-        };
-      }
-      const bccNumber = '263784136505';
-      const text = params.ref
-        ? `Hello City of Bulawayo Customer Care, inquiring about Report Ref: ${params.ref} (${params.type || 'Fault'})`
-        : 'Hello City of Bulawayo Customer Care, I would like to inquire about municipal services.';
-      return {
-        phoneNumber: '+263 78 413 6505',
-        whatsappUrl: `https://wa.me/${bccNumber}?text=${encodeURIComponent(text)}`,
-        text,
-      };
+    } catch (error) {
+      throw new Error(`No verified contact channel is available: ${error.message}`);
     }
   },
 

@@ -3,9 +3,11 @@
   "version": "1.0.0",
   "description": "BCC SmartConnect backend API \u2014 Node/Express/PostgreSQL/PostGIS",
   "main": "src/app.js",
+  "engines": { "node": ">=20.19.0" },
   "scripts": {
     "start": "node src/app.js",
     "dev": "nodemon src/app.js",
+    "migrate": "node src/scripts/runMigrations.js",
     "test": "node --test --test-concurrency=1 test/*.test.js"
   },
   "dependencies": {

@@ -5,51 +5,11 @@ const { getIo } = require('../sockets/incidentSocket');
 
 const router = express.Router();
 
-// Fallback seed bulletins in case database table is empty
-const DEFAULT_BULLETINS = [
-  {
-    id: 'b1111111-1111-1111-1111-111111111111',
-    title: 'Criterion Water Treatment Plant Maintenance',
-    body: 'Scheduled 48-hour citywide water rationing shutdown to carry out critical valve repairs at Criterion Waterworks. Eastern and Western high-density suburbs are advised to store drinking water.',
-    category: 'Water Cut',
-    target_ward: 'All Bulawayo Wards',
-    is_urgent: true,
-    created_at: new Date(Date.now() - 25 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'b2222222-2222-2222-2222-222222222222',
-    title: 'Emergency Road Resurfacing — Luveve Road Corridor',
-    body: 'BCC Roads Department has commenced urgent pothole patching and asphalt overlay along Luveve Road between Old Khami Rd and Renkini Bus Terminus. Expect traffic diversions.',
-    category: 'Roads',
-    target_ward: 'Ward 14',
-    is_urgent: false,
-    created_at: new Date(Date.now() - 3 * 3600 * 1000).toISOString(),
-  },
-  {
-    id: 'b3333333-3333-3333-3333-333333333333',
-    title: 'Cholera & Waterborne Disease Prevention Guidelines',
-    body: 'City Health Department urges all residents to boil municipal water for drinking or use WaterGuard tablets available free at all Bulawayo municipal polyclinics.',
-    category: 'Health',
-    target_ward: 'All Bulawayo Wards',
-    is_urgent: true,
-    created_at: new Date(Date.now() - 8 * 3600 * 1000).toISOString(),
-  },
-  {
-    id: 'b4444444-4444-4444-4444-444444444444',
-    title: 'Ward 28 Community Clean-Up & Storm Drain Clearing Campaign',
-    body: 'Cowdray Park Residents Association in partnership with BCC Health Inspectorate will conduct a community drainage clearing exercise this Saturday starting at 08:00 AM.',
-    category: 'Notice',
-    target_ward: 'Ward 28',
-    is_urgent: false,
-    created_at: new Date(Date.now() - 24 * 3600 * 1000).toISOString(),
-  },
-];
-
 // GET /api/bulletins — public read with optional filtering
 router.get('/', async (req, res) => {
   const { ward, category, search, urgent } = req.query;
   try {
-    const filters = [];
+    const filters = ["status = 'published'", 'is_demo = false', '(starts_at IS NULL OR starts_at <= NOW())', '(expires_at IS NULL OR expires_at > NOW())'];
     const params = [];
 
     if (category && category !== 'All') {
@@ -72,21 +32,15 @@ router.get('/', async (req, res) => {
       filters.push(`(LOWER(title) LIKE $${params.length} OR LOWER(body) LIKE $${params.length})`);
     }
 
-    const where = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
-
     const { rows } = await pool.query(
-      `SELECT * FROM bulletins ${where} ORDER BY is_urgent DESC, created_at DESC LIMIT 50`,
+      `SELECT * FROM bulletins WHERE ${filters.join(' AND ')} ORDER BY is_urgent DESC, created_at DESC LIMIT 50`,
       params
     );
 
-    if (!rows.length && !filters.length) {
-      return res.json(DEFAULT_BULLETINS);
-    }
-
-    res.json(rows.length ? rows : DEFAULT_BULLETINS);
+    res.json(rows);
   } catch (err) {
     console.error('GET bulletins:', err.message);
-    res.json(DEFAULT_BULLETINS);
+    res.status(503).json({ error: 'Bulletins are temporarily unavailable' });
   }
 });
 
@@ -100,11 +54,12 @@ router.get('/feed', async (req, res) => {
     // 1. Fetch Bulletins
     try {
       const { rows: bulletins } = await pool.query(
-        'SELECT * FROM bulletins ORDER BY created_at DESC LIMIT 30'
+        `SELECT * FROM bulletins WHERE status = 'published' AND is_demo = false
+         AND (starts_at IS NULL OR starts_at <= NOW())
+         AND (expires_at IS NULL OR expires_at > NOW())
+         ORDER BY created_at DESC LIMIT 30`
       );
-      const bList = bulletins.length ? bulletins : DEFAULT_BULLETINS;
-
-      for (const b of bList) {
+      for (const b of bulletins) {
         feedItems.push({
           id: b.id,
           source_type: 'council',
@@ -120,72 +75,10 @@ router.get('/feed', async (req, res) => {
           action_label: null,
         });
       }
-    } catch (_) {
-      for (const b of DEFAULT_BULLETINS) {
-        feedItems.push({
-          id: b.id,
-          source_type: 'council',
-          source_name: 'City of Bulawayo Council',
-          source_badge: 'Official Council',
-          title: b.title,
-          body: b.body,
-          category: b.category || 'Notice',
-          target_ward: b.target_ward || 'All Bulawayo Wards',
-          is_urgent: b.is_urgent === true,
-          created_at: b.created_at,
-          action_url: null,
-          action_label: null,
-        });
-      }
+    } catch (err) {
+      console.error('GET bulletin feed:', err.message);
+      return res.status(503).json({ error: 'Bulletins are temporarily unavailable' });
     }
-
-    // 2. Fetch Notifications Broadcasts
-    try {
-      const { rows: notifs } = await pool.query(
-        'SELECT * FROM notifications ORDER BY sent_at DESC LIMIT 20'
-      );
-      for (const n of notifs) {
-        feedItems.push({
-          id: n.id,
-          source_type: 'broadcast',
-          source_name: 'BCC Civic Broadcast',
-          source_badge: 'Public Broadcast',
-          title: n.title,
-          body: n.body,
-          category: 'Alert',
-          target_ward: n.target_type === 'Zone' ? 'Targeted Zone' : 'All Bulawayo Wards',
-          is_urgent: true,
-          created_at: n.sent_at,
-          action_url: null,
-          action_label: null,
-        });
-      }
-    } catch (_) {}
-
-    // 3. Fetch Verified WhatsApp Channels / Highlights
-    try {
-      const { rows: channels } = await pool.query(
-        'SELECT * FROM whatsapp_channels ORDER BY is_official DESC LIMIT 15'
-      );
-      for (const c of channels) {
-        const isChannel = c.category === 'Channel';
-        const isWard = c.category === 'WardGroup';
-        feedItems.push({
-          id: c.id,
-          source_type: isChannel ? 'channel' : (isWard ? 'ward' : 'support'),
-          source_name: c.name,
-          source_badge: isChannel ? 'Official WhatsApp Channel' : (isWard ? 'Ward Community Group' : 'BCC Help Desk'),
-          title: c.name,
-          body: c.description || 'Join for real-time civic alerts, neighborhood updates, and direct BCC support.',
-          category: isChannel ? 'Channel' : (isWard ? 'Ward' : 'Support'),
-          target_ward: c.ward || 'All Bulawayo Wards',
-          is_urgent: false,
-          created_at: c.created_at || new Date().toISOString(),
-          action_url: c.invite_url || (c.phone_number ? `https://wa.me/${c.phone_number.replace(/[^0-9]/g, '')}` : null),
-          action_label: isChannel ? 'Follow Channel' : (isWard ? 'Join Ward Group' : 'Contact on WhatsApp'),
-        });
-      }
-    } catch (_) {}
 
     // Apply filtering
     let filtered = feedItems;
@@ -230,7 +123,7 @@ router.get('/feed', async (req, res) => {
 
 // POST /api/bulletins — authenticated dispatchers only
 router.post('/', authenticate, async (req, res) => {
-  const { title, body, category, target_ward, is_urgent } = req.body;
+  const { title, body, category, target_ward, is_urgent, source_name, source_url, starts_at, expires_at } = req.body;
   if (!title || !body) {
     return res.status(400).json({ error: 'title and body are required' });
   }
@@ -242,8 +135,8 @@ router.post('/', authenticate, async (req, res) => {
 
   try {
     const { rows } = await pool.query(
-      `INSERT INTO bulletins (title, body, category, target_ward, is_urgent)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO bulletins (title, body, category, target_ward, is_urgent, status, source_name, source_url, starts_at, expires_at, created_by)
+       VALUES ($1, $2, $3, $4, $5, 'draft', $6, $7, $8, $9, $10)
        RETURNING *`,
       [
         title.trim(),
@@ -251,6 +144,11 @@ router.post('/', authenticate, async (req, res) => {
         category || 'Notice',
         target_ward || 'All Bulawayo Wards',
         is_urgent === true || is_urgent === 'true',
+        source_name || 'BCC staff submission',
+        source_url || null,
+        starts_at || null,
+        expires_at || null,
+        req.user.id,
       ]
     );
 
@@ -259,8 +157,7 @@ router.post('/', authenticate, async (req, res) => {
     // Broadcast via Socket.io to all connected admin and mobile clients
     const io = getIo();
     if (io) {
-      io.to('admin').emit('bulletin:new', bulletin);
-      io.emit('bulletin:broadcast', bulletin);
+      io.to('admin').emit('bulletin:draft', bulletin);
     }
 
     res.status(201).json(bulletin);
@@ -270,8 +167,32 @@ router.post('/', authenticate, async (req, res) => {
   }
 });
 
-// POST /api/bulletins/sync — Ingest latest notices and water updates from citybyo.co.zw
-router.post('/sync', async (_req, res) => {
+router.post('/:id/publish', authenticate, async (req, res) => {
+  if (!['Communications', 'Administrator'].includes(req.user?.role)) {
+    return res.status(403).json({ error: 'Only communications staff can publish notices' });
+  }
+  try {
+    const { rows } = await pool.query(
+      `UPDATE bulletins SET status = 'published', approved_by = $1,
+         published_by = $1, published_at = NOW()
+       WHERE id = $2 AND created_by IS NOT NULL AND created_by <> $1
+         AND status IN ('draft', 'review') AND is_demo = false
+       RETURNING *`,
+      [req.user.id, req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Draft notice not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('POST /bulletins/:id/publish:', err.message);
+    res.status(500).json({ error: 'Failed to publish notice' });
+  }
+});
+
+// Scraped content enters the staff review process and is never published automatically.
+router.post('/sync', authenticate, async (_req, res) => {
+  if (!['Communications', 'Administrator'].includes(_req.user?.role)) {
+    return res.status(403).json({ error: 'Only communications staff can import notice drafts' });
+  }
   try {
     const { syncCouncilBulletins } = require('../services/councilScraperService');
     const synced = await syncCouncilBulletins();

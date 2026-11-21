@@ -1,6 +1,7 @@
 const express = require('express');
 const pool = require('../config/db');
 const { authenticate } = require('../middleware/auth');
+const { requireRole } = require('../middleware/rbac');
 const { getIo } = require('../sockets/incidentSocket');
 
 const router = express.Router();
@@ -8,10 +9,10 @@ const router = express.Router();
 const VALID_STATUSES = ['Available', 'On Site', 'Dispatched', 'Off Duty'];
 
 // GET /api/teams — public read (for admin portal and mobile)
-router.get('/', async (_req, res) => {
+router.get('/', authenticate, requireRole('Dispatcher', 'Communications', 'Administrator'), async (_req, res) => {
   try {
     const { rows } = await pool.query(
-      'SELECT * FROM field_teams ORDER BY name ASC'
+      'SELECT * FROM field_teams WHERE is_demo = false ORDER BY name ASC'
     );
     res.json(rows);
   } catch (err) {

@@ -12,12 +12,13 @@ import 'storage_service.dart';
 /// Stores reports locally only after the backend confirms submission.
 class BccApiService {
   // ─── Backend URL ──────────────────────────────────────────────────────────
-  // Live cloud Render backend: https://bcc-smart-connect.onrender.com/api
-  // Override with --dart-define=BCC_API_URL=... if pointing to a different endpoint.
+  // Always choose the API explicitly for non-local deployments.
   static String get baseUrl {
     const envUrl = String.fromEnvironment('BCC_API_URL');
     if (envUrl.isNotEmpty) return envUrl;
-    return 'https://bcc-smart-connect.onrender.com/api';
+    if (kIsWeb) return 'http://localhost:3000/api';
+    if (defaultTargetPlatform == TargetPlatform.android) return 'http://10.0.2.2:3000/api';
+    return 'http://localhost:3000/api';
   }
 
   static const Duration _timeout = Duration(seconds: 10);
@@ -175,6 +176,9 @@ class BccApiService {
     required String address,
     required double lat,
     required double lng,
+    required String locationSource,
+    required double? locationAccuracyMeters,
+    required DateTime locationCapturedAt,
     String? phone,
     String? reporterName,
   }) async {
@@ -190,6 +194,10 @@ class BccApiService {
               'address': address,
               'lat': lat,
               'lng': lng,
+              'location_source': locationSource,
+              'location_accuracy_m': locationAccuracyMeters,
+              'location_captured_at': locationCapturedAt.toIso8601String(),
+              'location_confirmed': true,
               if (phone != null && phone.isNotEmpty) 'phone': phone,
             }),
           )
@@ -332,79 +340,8 @@ class BccApiService {
       debugPrint('fetchBulletinFeed error: $e');
     }
 
-    // Default offline fallback feed
-    return [
-      {
-        'id': 'b1',
-        'source_type': 'council',
-        'source_name': 'City of Bulawayo Council',
-        'source_badge': 'Official Council',
-        'title': 'Criterion Water Treatment Plant Maintenance',
-        'body': 'Scheduled 48-hour citywide water rationing shutdown to carry out critical valve repairs at Criterion Waterworks. Eastern and Western suburbs are advised to store drinking water.',
-        'category': 'Water Cut',
-        'target_ward': 'All Bulawayo Wards',
-        'is_urgent': true,
-        'created_at': DateTime.now().subtract(const Duration(minutes: 25)).toIso8601String(),
-        'action_url': null,
-        'action_label': null,
-      },
-      {
-        'id': 'b2',
-        'source_type': 'channel',
-        'source_name': 'City of Bulawayo WhatsApp Channel',
-        'source_badge': 'Official WhatsApp Channel',
-        'title': 'Daily Water Shedding Roster & Reservoir Levels',
-        'body': 'Criterion Reservoir level is at 38%. Magwegwe Reservoir pumping has resumed. Check the full daily schedule and updates on the official BCC channel.',
-        'category': 'Channel',
-        'target_ward': 'All Bulawayo Wards',
-        'is_urgent': false,
-        'created_at': DateTime.now().subtract(const Duration(hours: 2)).toIso8601String(),
-        'action_url': 'https://whatsapp.com/channel/0029VbA48WT1iUxQRxulvU41',
-        'action_label': 'Open Channel in WhatsApp',
-      },
-      {
-        'id': 'b3',
-        'source_type': 'council',
-        'source_name': 'BCC Health Inspectorate',
-        'source_badge': 'Official Council',
-        'title': 'Waterborne Disease & Cholera Advisory',
-        'body': 'Please ensure drinking water is boiled for at least 3 minutes or treated with WaterGuard tablets available free of charge at all municipal polyclinics.',
-        'category': 'Health',
-        'target_ward': 'All Bulawayo Wards',
-        'is_urgent': true,
-        'created_at': DateTime.now().subtract(const Duration(hours: 5)).toIso8601String(),
-        'action_url': null,
-        'action_label': null,
-      },
-      {
-        'id': 'b4',
-        'source_type': 'ward',
-        'source_name': 'Ward 28 - Cowdray Park Community',
-        'source_badge': 'Ward Community Group',
-        'title': 'Sewer Pipe Rehabilitation along Stand 402',
-        'body': 'BCC engineering crew has arrived on site to repair the main sewer blockage. Residents are advised to avoid the intersection of Stand 402 and Garikai Section.',
-        'category': 'Ward',
-        'target_ward': 'Ward 28',
-        'is_urgent': false,
-        'created_at': DateTime.now().subtract(const Duration(hours: 9)).toIso8601String(),
-        'action_url': 'https://chat.whatsapp.com/BCCWard28CommunityGroup',
-        'action_label': 'Join Ward 28 Group',
-      },
-      {
-        'id': 'b5',
-        'source_type': 'council',
-        'source_name': 'BCC Roads Department',
-        'source_badge': 'Official Council',
-        'title': 'Luveve Road Pothole Patching & Resurfacing',
-        'body': 'Emergency road maintenance works underway along Luveve Road. Traffic diverted through Old Khami Rd. Please exercise caution when driving.',
-        'category': 'Roads',
-        'target_ward': 'Ward 14',
-        'is_urgent': false,
-        'created_at': DateTime.now().subtract(const Duration(days: 1)).toIso8601String(),
-        'action_url': null,
-        'action_label': null,
-      },
-    ];
+    // Official notices are not cached as sample data.
+    return [];
   }
 
   /// Fetch public council bulletins / notices
@@ -458,60 +395,7 @@ class BccApiService {
       debugPrint('fetchWhatsAppChannels error: $e');
     }
 
-    // Default fallback channels if offline
-    return [
-      {
-        'id': '1',
-        'name': 'City of Bulawayo Official WhatsApp Channel',
-        'category': 'Channel',
-        'ward': 'All Bulawayo Wards',
-        'description': 'Follow the official verified City of Bulawayo WhatsApp Channel for daily water shedding updates, civic notices, emergency alerts, and exchange rates.',
-        'invite_url': 'https://whatsapp.com/channel/0029VbA48WT1iUxQRxulvU41',
-        'is_official': true,
-        'member_count_approx': 'Official Channel',
-      },
-      {
-        'id': '2',
-        'name': 'BCC Customer Care & Enquiries',
-        'category': 'Support',
-        'ward': 'All Bulawayo Wards',
-        'description': 'Main City of Bulawayo customer care line (0784 136 505) for public inquiries, fault reporting, service updates, and citizen feedback.',
-        'invite_url': 'https://wa.me/263784136505?text=Hello%20City%20of%20Bulawayo%20Customer%20Care,%20I%20would%20like%20to%20make%20an%20enquiry.',
-        'phone_number': '+263 78 413 6505',
-        'is_official': true,
-        'member_count_approx': 'Main Customer Line',
-      },
-      {
-        'id': '3',
-        'name': 'BCC Monthly Water Meter Readings',
-        'category': 'MeterReading',
-        'ward': 'All Bulawayo Wards',
-        'description': 'Official WhatsApp number (0713 347 319) dedicated for Bulawayo residents to submit monthly water meter readings and billing photos.',
-        'invite_url': 'https://wa.me/263713347319?text=Hello%20City%20of%20Bulawayo,%20I%20am%20submitting%20my%20monthly%20water%20meter%20reading.%0AAccount%20No:%20%0AAddress:%20%0AMeter%20Reading:%20',
-        'phone_number': '+263 71 334 7319',
-        'is_official': true,
-        'member_count_approx': 'Water Readings Desk',
-      },
-      {
-        'id': '4',
-        'name': 'Ward 1 - Bulawayo Central & Suburbs',
-        'category': 'WardGroup',
-        'ward': 'Ward 1',
-        'description': 'Community group for CBD, Suburbs, Kumalo, and Ascot residents.',
-        'invite_url': 'https://chat.whatsapp.com/BCCWard01CommunityGroup',
-        'is_official': true,
-        'member_count_approx': '1,020 Members',
-      },
-      {
-        'id': '5',
-        'name': 'Ward 28 - Cowdray Park',
-        'category': 'WardGroup',
-        'ward': 'Ward 28',
-        'description': 'Cowdray Park municipal updates group for sewer works and road gravelling.',
-        'invite_url': 'https://chat.whatsapp.com/BCCWard28CommunityGroup',
-        'is_official': true,
-        'member_count_approx': '1,800 Members',
-      }
-    ];
+    // Contact channels are not fabricated when the service is unavailable.
+    return [];
   }
 }

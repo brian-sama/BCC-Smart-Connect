@@ -20,6 +20,7 @@ class MapPickerDialog extends StatefulWidget {
 class _MapPickerDialogState extends State<MapPickerDialog> {
   late LatLng _selectedPoint;
   late final MapController _mapController;
+  bool _hasSelectedOnMap = false;
 
   @override
   void initState() {
@@ -84,6 +85,7 @@ class _MapPickerDialogState extends State<MapPickerDialog> {
                     onTap: (tapPosition, point) {
                       setState(() {
                         _selectedPoint = point;
+                        _hasSelectedOnMap = true;
                       });
                     },
                   ),
@@ -144,10 +146,10 @@ class _MapPickerDialogState extends State<MapPickerDialog> {
                         ),
                         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                       ),
-                      onPressed: () {
+                      onPressed: _hasSelectedOnMap ? () {
                         Navigator.pop(context, _selectedPoint);
-                      },
-                      child: const Text('Confirm Pin Location'),
+                      } : null,
+                      child: Text(_hasSelectedOnMap ? 'Confirm Pin Location' : 'Tap the map to place a pin'),
                     ),
                   ],
                 ),

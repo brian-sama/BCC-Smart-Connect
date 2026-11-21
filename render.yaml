@@ -4,10 +4,13 @@ services:
     runtime: node
     rootDir: backend
     buildCommand: npm install
+    preDeployCommand: npm run migrate
     startCommand: npm start
     envVars:
       - key: NODE_ENV
         value: production
+      - key: NODE_VERSION
+        value: 22.12.0
       - key: PORT
         value: 10000
       - key: DATABASE_URL

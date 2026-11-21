@@ -13,7 +13,7 @@ const pool = new Pool({
       process.env.DATABASE_URL.includes('neon.tech') ||
       process.env.DATABASE_URL.includes('supabase') ||
       process.env.NODE_ENV === 'production')
-      ? { rejectUnauthorized: false }
+      ? { rejectUnauthorized: true }
       : false,
   max: 10,
   idleTimeoutMillis: 30000,
