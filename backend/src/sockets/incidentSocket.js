@@ -1,17 +1,18 @@
 const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
+const pool = require('../config/db');
 
 let _io = null;
 
 function initSocket(httpServer) {
   _io = new Server(httpServer, {
     cors: {
-      origin: process.env.ALLOWED_ORIGINS?.split(',') || process.env.ADMIN_ORIGIN || '*',
+      origin: (process.env.ALLOWED_ORIGINS || '').split(',').map((origin) => origin.trim()).filter(Boolean),
       methods: ['GET', 'POST'],
     },
   });
 
-  _io.use((socket, next) => {
+  _io.use(async (socket, next) => {
     const room = socket.handshake.query.room || socket.handshake.auth?.room;
     if (room === 'admin') {
       const token = socket.handshake.auth?.token || socket.handshake.query?.token;
@@ -25,6 +26,12 @@ function initSocket(httpServer) {
       }
       try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const { rows } = await pool.query(
+          'SELECT role, is_active FROM users WHERE id = $1',
+          [decoded.id]
+        );
+        if (!rows.length || !rows[0].is_active) return next(new Error('Account is inactive'));
+        decoded.role = rows[0].role;
         if (!['Dispatcher', 'Communications', 'Administrator'].includes(decoded.role)) {
           return next(new Error('Forbidden: Insufficient privileges'));
         }

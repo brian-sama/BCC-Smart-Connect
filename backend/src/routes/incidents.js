@@ -1,6 +1,7 @@
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const multer = require('multer');
 const pool = require('../config/db');
 const { authenticate, optionalAuth } = require('../middleware/auth');
@@ -12,12 +13,19 @@ const router = express.Router();
 
 const VALID_TYPES    = ['Ambulance','Fire','Disaster','WaterLeak','SewerBurst','RoadDamage','StreetLight','Other'];
 const VALID_STATUSES = ['New','Assigned','InProgress','Resolved','Closed'];
+const ALLOWED_TRANSITIONS = {
+  New: ['Assigned'],
+  Assigned: ['InProgress', 'New'],
+  InProgress: ['Resolved', 'Assigned'],
+  Resolved: ['Closed', 'InProgress'],
+  Closed: [],
+};
 
 const STATUS_MESSAGES = {
-  Assigned:   'Your report has been assigned to a BCC response team.',
-  InProgress: 'A BCC team is now working on your reported incident.',
-  Resolved:   'Your incident has been resolved. Thank you for helping keep Bulawayo safe.',
-  Closed:     'Your report has been closed by BCC.',
+  Assigned:   'BCC staff updated your report status to Assigned. Team acceptance is not confirmed by this update.',
+  InProgress: 'BCC staff updated your report status to In Progress. This status does not confirm a field arrival.',
+  Resolved:   'BCC staff marked your report as Resolved.',
+  Closed:     'BCC staff closed your report.',
 };
 
 // Multer storage setup for fault evidence photos
@@ -76,46 +84,28 @@ function removeUploadedFile(file) {
   if (file?.path) fs.unlink(file.path, () => {});
 }
 
-function generateReference() {
-  const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-  const rand  = Math.random().toString(36).slice(2, 7).toUpperCase();
-  return `BCC-${stamp}-${rand}`;
+function hasValidImageSignature(file) {
+  const bytes = fs.readFileSync(file.path).subarray(0, 12);
+  const mime = file.mimetype;
+  if (mime === 'image/jpeg') return bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  if (mime === 'image/png') return bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  if (mime === 'image/webp') return bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP';
+  if (mime === 'image/heic' || mime === 'image/heif') {
+    return bytes.toString('ascii', 4, 8) === 'ftyp' && /^(heic|heix|hevc|hevx|mif1|msf1)$/.test(bytes.toString('ascii', 8, 12));
+  }
+  return false;
 }
 
-// ─── SLA & Escalation Engine ──────────────────────────────────────────────────
-function calculateSla(incident) {
-  if (!incident || !incident.created_at) return incident;
-
-  const created = new Date(incident.created_at).getTime();
-  const now = Date.now();
-  const ageMinutes = Math.floor((now - created) / (60 * 1000));
-
-  // SLA thresholds in minutes based on incident criticality
-  let targetMinutes = 1440; // Default 24 hours
-  if (['Ambulance', 'Fire', 'Disaster'].includes(incident.incident_type)) {
-    targetMinutes = 15; // 15 minutes for life/safety emergencies
-  } else if (['WaterLeak', 'SewerBurst'].includes(incident.incident_type)) {
-    targetMinutes = 120; // 2 hours for major utilities
-  } else if (['StreetLight', 'RoadDamage'].includes(incident.incident_type)) {
-    targetMinutes = 2880; // 48 hours for civil infrastructure
-  }
-
-  const isResolved = ['Resolved', 'Closed'].includes(incident.status);
-  const isBreached = !isResolved && ageMinutes > targetMinutes;
-  const isWarning = !isResolved && ageMinutes > (targetMinutes * 0.75);
-
-  return {
-    ...incident,
-    sla_target_minutes: targetMinutes,
-    age_minutes: ageMinutes,
-    is_sla_breached: isBreached,
-    sla_urgency: isResolved ? 'RESOLVED' : (isBreached ? 'CRITICAL' : (isWarning ? 'WARNING' : 'NORMAL')),
-  };
+function generateReference() {
+  const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const rand  = crypto.randomBytes(8).toString('hex').toUpperCase();
+  return `BCC-${stamp}-${rand}`;
 }
 
 // ─── POST /api/incidents — anonymous OR authenticated submission ──────────────
 router.post('/', optionalAuth, async (req, res) => {
-  const { incident_type, lat, lng, description, address, phone, fcm_token } = req.body;
+  const { incident_type, lat, lng, description, address, phone, fcm_token,
+    location_source, location_accuracy_m, location_captured_at, location_confirmed } = req.body;
 
   if (!incident_type || lat == null || lng == null) {
     return res.status(400).json({ error: 'incident_type, lat, and lng are required' });
@@ -123,9 +113,22 @@ router.post('/', optionalAuth, async (req, res) => {
   if (!VALID_TYPES.includes(incident_type)) {
     return res.status(400).json({ error: `incident_type must be one of: ${VALID_TYPES.join(', ')}` });
   }
+  if (location_confirmed !== true || !['gps', 'manual_pin'].includes(location_source)) {
+    return res.status(400).json({ error: 'A GPS location or manually selected map pin must be confirmed.' });
+  }
+  if (typeof description !== 'string' || description.trim().length < 3 || description.length > 5000) {
+    return res.status(400).json({ error: 'description must contain between 3 and 5000 characters' });
+  }
+  const capturedAt = new Date(location_captured_at);
+  if (!location_captured_at || Number.isNaN(capturedAt.getTime()) || capturedAt > new Date(Date.now() + 60000)) {
+    return res.status(400).json({ error: 'A valid location capture timestamp is required.' });
+  }
+  if (location_source === 'gps' && (!Number.isFinite(Number(location_accuracy_m)) || Number(location_accuracy_m) <= 0)) {
+    return res.status(400).json({ error: 'GPS accuracy in metres is required for GPS locations.' });
+  }
 
-  const numLat = parseFloat(lat);
-  const numLng = parseFloat(lng);
+  const numLat = Number(lat);
+  const numLng = Number(lng);
   if (isNaN(numLat) || isNaN(numLng)) {
     return res.status(400).json({ error: 'lat and lng must be valid numbers' });
   }
@@ -148,7 +151,7 @@ router.post('/', optionalAuth, async (req, res) => {
                   ))
                 ))::numeric, 0) AS distance_meters
          FROM incidents
-         WHERE incident_type = $3
+         WHERE is_demo = false AND incident_type = $3
            AND status IN ('New', 'Assigned', 'InProgress')
            AND created_at >= NOW() - INTERVAL '24 HOURS'
            AND lat IS NOT NULL AND lng IS NOT NULL
@@ -172,15 +175,27 @@ router.post('/', optionalAuth, async (req, res) => {
       pool.query('UPDATE users SET fcm_token = $1 WHERE id = $2', [fcm_token, req.user.id]).catch(() => {});
     }
 
+    const reporterLabel = req.user ? `${req.user.first_name || ''} ${req.user.last_name || ''}`.trim() || 'Citizen' : (phone ? `Citizen (${phone})` : 'Anonymous Citizen');
+    const timelineNote = nearbyDuplicates.length > 0
+      ? `Report filed by ${reporterLabel}. Similar active reports nearby: ${nearbyDuplicates.length}.`
+      : 'Report submitted.';
     const { rows } = await pool.query(
-      `INSERT INTO incidents
+      `WITH created_incident AS (
+       INSERT INTO incidents
          (reference_number, reporter_id, reporter_name, reporter_phone,
-          incident_type, description, address, lat, lng)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-       RETURNING *`,
+          incident_type, description, address, lat, lng, location_source,
+          location_accuracy_m, location_captured_at, location_confirmed)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+       RETURNING *
+       ), created_timeline AS (
+         INSERT INTO incident_timeline (incident_id, actor_name, actor_role, status, notes)
+         SELECT id, $14, $15, 'New', $16 FROM created_incident
+         RETURNING incident_id
+       )
+       SELECT * FROM created_incident`,
       [
         reference_number,
-        req.user?.id ?? null,
+        req.user && !req.user.is_guest ? req.user.id : null,
         req.user ? `${req.user.first_name || ''} ${req.user.last_name || ''}`.trim() || null : null,
         phone || null,
         incident_type,
@@ -188,39 +203,23 @@ router.post('/', optionalAuth, async (req, res) => {
         address || null,
         numLat,
         numLng,
+        location_source,
+        location_source === 'gps' ? Number(location_accuracy_m) : null,
+        capturedAt.toISOString(),
+        true,
+        reporterLabel,
+        req.user?.role ?? 'Resident',
+        timelineNote,
       ]
     );
 
-    let incident = rows[0];
+    const incident = rows[0];
 
     // Attach deduplication & SLA metadata
     if (nearbyDuplicates.length > 0) {
       incident.duplicate_detected = true;
       incident.nearby_duplicate_count = nearbyDuplicates.length;
       incident.primary_cluster_reference = nearbyDuplicates[0].reference_number;
-    }
-
-    incident = calculateSla(incident);
-
-    // Log initial timeline entry
-    try {
-      const reporterLabel = req.user ? `${req.user.first_name || ''} ${req.user.last_name || ''}`.trim() || 'Citizen' : (phone ? `Citizen (${phone})` : 'Anonymous Citizen');
-      const timelineNote = nearbyDuplicates.length > 0
-        ? `Report filed by ${reporterLabel}. Spatial Clustering: Detected ${nearbyDuplicates.length} existing active report(s) within 150m (Ref: ${nearbyDuplicates[0].reference_number}).`
-        : `Report filed by ${reporterLabel}.`;
-
-      await pool.query(
-        `INSERT INTO incident_timeline (incident_id, actor_name, actor_role, status, notes)
-         VALUES ($1, $2, $3, 'New', $4)`,
-        [
-          incident.id,
-          reporterLabel,
-          req.user?.role ?? 'Resident',
-          timelineNote,
-        ]
-      );
-    } catch (_) {
-      // Timeline insert failure is non-fatal
     }
 
     const io = getIo();
@@ -243,7 +242,7 @@ router.get('/', authenticate, requireRole(...STAFF_ROLES), async (req, res) => {
   if (type)      { params.push(type);       filters.push(`i.incident_type = $${params.length}`); }
   if (emergency) { params.push(true);       filters.push(`i.is_emergency = $${params.length}`); }
 
-  const where = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
+  const where = `WHERE i.is_demo = false${filters.length ? ` AND ${filters.join(' AND ')}` : ''}`;
   const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 200);
   const safePage  = Math.max(parseInt(page, 10) || 1, 1);
   params.push(safeLimit, (safePage - 1) * safeLimit);
@@ -261,8 +260,7 @@ router.get('/', authenticate, requireRole(...STAFF_ROLES), async (req, res) => {
       params
     );
 
-    const incidentsWithSla = rows.map(calculateSla);
-    res.json(incidentsWithSla);
+    res.json(rows);
   } catch (err) {
     console.error('GET /incidents:', err.message);
     res.status(500).json({ error: 'Failed to fetch incidents' });
@@ -273,11 +271,10 @@ router.get('/', authenticate, requireRole(...STAFF_ROLES), async (req, res) => {
 router.get('/track/:reference', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT id, reference_number, incident_type, status, description, address,
-              lat, lng, is_emergency, created_at, updated_at, resolved_at,
-              resolution_notes, department, assigned_to_name, photo_url
+      `SELECT id, reference_number, incident_type, status, created_at, updated_at,
+              resolved_at
        FROM incidents
-       WHERE reference_number = $1`,
+       WHERE reference_number = $1 AND is_demo = false`,
       [req.params.reference.toUpperCase()]
     );
 
@@ -290,13 +287,18 @@ router.get('/track/:reference', async (req, res) => {
     // Fetch timeline
     try {
       const timelineResult = await pool.query(
-        `SELECT id, actor_name, actor_role, status, notes, created_at
+        `SELECT id, actor_role, status, created_at
          FROM incident_timeline
          WHERE incident_id = $1
          ORDER BY created_at ASC`,
         [incident.id]
       );
-      incident.timeline = timelineResult.rows;
+      incident.timeline = timelineResult.rows.map((event) => ({
+        id: event.id,
+        actor: event.actor_role === 'Resident' ? 'Resident' : 'BCC staff',
+        status: event.status,
+        created_at: event.created_at,
+      }));
     } catch (_) {
       incident.timeline = [];
     }
@@ -316,7 +318,7 @@ router.get('/my', optionalAuth, async (req, res) => {
       `SELECT id, reference_number, incident_type, status, description, address,
               lat, lng, is_emergency, created_at, updated_at, resolved_at,
               resolution_notes, department, assigned_to_name, photo_url
-       FROM incidents WHERE reporter_id = $1 ORDER BY created_at DESC`,
+       FROM incidents WHERE reporter_id = $1 AND is_demo = false ORDER BY created_at DESC`,
       [req.user.id]
     );
     res.json({ incidents: rows });
@@ -335,7 +337,7 @@ router.get('/:id', authenticate, requireRole(...STAFF_ROLES), async (req, res) =
               resolution_notes, department, assigned_to_name, reporter_name,
               reporter_phone, photo_url
        FROM incidents
-       WHERE id = $1`,
+       WHERE id = $1 AND is_demo = false`,
       [req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'Incident not found' });
@@ -374,18 +376,30 @@ router.patch(
     if (status && !VALID_STATUSES.includes(status)) {
       return res.status(400).json({ error: `status must be one of: ${VALID_STATUSES.join(', ')}` });
     }
+    if (status && !['Dispatcher', 'Administrator'].includes(req.user?.role)) {
+      return res.status(403).json({ error: 'Only dispatch or administrator staff can change incident status' });
+    }
 
     try {
       const fields = ['updated_at = NOW()'];
       const values = [];
       let idx = 1;
+      let expectedStatus;
 
       if (status) {
+        const currentResult = await pool.query(
+          'SELECT status FROM incidents WHERE id = $1 AND is_demo = false',
+          [req.params.id]
+        );
+        if (!currentResult.rows.length) return res.status(404).json({ error: 'Incident not found' });
+        const currentStatus = currentResult.rows[0].status;
+        if (!ALLOWED_TRANSITIONS[currentStatus]?.includes(status)) {
+          return res.status(409).json({ error: `Transition from ${currentStatus} to ${status} is not allowed` });
+        }
+        expectedStatus = currentStatus;
         fields.push(`status = $${idx++}`);
         values.push(status);
-        if (status === 'Resolved') {
-          fields.push(`resolved_at = NOW()`);
-        }
+        fields.push(status === 'Resolved' ? 'resolved_at = NOW()' : 'resolved_at = NULL');
       }
       if (resolution_notes !== undefined) {
         fields.push(`resolution_notes = $${idx++}`);
@@ -401,32 +415,33 @@ router.patch(
       }
 
       values.push(req.params.id);
+      let whereClause = `id = $${idx} AND is_demo = false`;
+      if (status) {
+        values.push(expectedStatus);
+        whereClause += ` AND status = $${idx + 1}`;
+      }
+      const actorName = `${req.user.first_name || 'Staff'} ${req.user.last_name || ''}`.trim();
+      const eventNote = resolution_notes || (status
+        ? `Status changed to ${status}.`
+        : assigned_to_name !== undefined
+          ? `Assignment updated${assigned_to_name ? ` to ${assigned_to_name}` : ''}.`
+          : `Department updated${department ? ` to ${department}` : ''}.`);
+      values.push(actorName, req.user.role, eventNote);
       const { rows } = await pool.query(
-        `UPDATE incidents SET ${fields.join(', ')} WHERE id = $${idx} RETURNING *`,
+        `WITH updated AS (
+           UPDATE incidents SET ${fields.join(', ')} WHERE ${whereClause} RETURNING *
+         ), event AS (
+           INSERT INTO incident_timeline (incident_id, actor_name, actor_role, status, notes)
+           SELECT id, $${idx + (status ? 2 : 1)}, $${idx + (status ? 3 : 2)}, status, $${idx + (status ? 4 : 3)}
+           FROM updated RETURNING incident_id
+         )
+         SELECT * FROM updated`,
         values
       );
+      if (!rows.length && status) return res.status(409).json({ error: 'Incident changed while you were editing it. Reload and try again.' });
       if (!rows.length) return res.status(404).json({ error: 'Incident not found' });
 
       const incident = rows[0];
-
-      // Log timeline
-      if (status || resolution_notes) {
-        try {
-          await pool.query(
-            `INSERT INTO incident_timeline (incident_id, actor_name, actor_role, status, notes)
-             VALUES ($1, $2, $3, $4, $5)`,
-            [
-              req.params.id,
-              `${req.user.first_name || 'Dispatcher'} ${req.user.last_name || ''}`.trim(),
-              req.user.role,
-              // incident_status is an enum, so log the incident's current status
-              // when only notes were changed ('Updated' is not a valid value)
-              status || incident.status,
-              resolution_notes || `Status updated to ${status || 'modified'}.`,
-            ]
-          );
-        } catch (_) {}
-      }
 
       // Broadcast update to all connected admin clients
       const io = getIo();
@@ -464,13 +479,20 @@ router.patch(
 );
 
 // ─── POST /api/incidents/:id/media — upload photo evidence ───────────────────
-// Staff may attach or replace evidence on any incident. Residents (including
-// anonymous reporters) may attach ONE photo to an incident within
-// ANON_UPLOAD_WINDOW_MINUTES of submitting it, so a stranger cannot overwrite
-// the evidence on someone else's report.
-router.post('/:id/media', optionalAuth, uploadSinglePhoto, async (req, res) => {
+// Staff may attach or replace evidence. Signed-in residents may attach one
+// image only to their own report; guests cannot upload until a secure upload
+// grant is available.
+router.post('/:id/media', authenticate, uploadSinglePhoto, async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No photo file provided.' });
+  }
+  if (!hasValidImageSignature(req.file)) {
+    removeUploadedFile(req.file);
+    return res.status(415).json({ error: 'The uploaded file content does not match a supported image.' });
+  }
+  if (req.user.is_guest) {
+    removeUploadedFile(req.file);
+    return res.status(403).json({ error: 'Photo uploads require a registered account.' });
   }
 
   const incidentId = req.params.id;
@@ -483,10 +505,10 @@ router.post('/:id/media', optionalAuth, uploadSinglePhoto, async (req, res) => {
           SET photo_url = $1, updated_at = NOW()
         WHERE id = $2
           AND ($3::boolean
-               OR (photo_url IS NULL
-                   AND created_at >= NOW() - ($4 || ' minutes')::interval))
+               OR (reporter_id = $4 AND photo_url IS NULL
+                   AND created_at >= NOW() - ($5 || ' minutes')::interval))
         RETURNING id`,
-      [fileUrl, incidentId, isStaff, String(ANON_UPLOAD_WINDOW_MINUTES)]
+      [fileUrl, incidentId, isStaff, req.user.id, String(ANON_UPLOAD_WINDOW_MINUTES)]
     );
     if (!rows.length) {
       removeUploadedFile(req.file);
@@ -504,6 +526,28 @@ router.post('/:id/media', optionalAuth, uploadSinglePhoto, async (req, res) => {
     }
     console.error('POST /incidents/:id/media:', err.message);
     res.status(500).json({ error: 'Failed to save media attachment.' });
+  }
+});
+
+router.get('/:id/media', authenticate, requireRole(...STAFF_ROLES), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT photo_url FROM incidents WHERE id = $1 AND is_demo = false',
+      [req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Incident not found' });
+    const storedPath = rows[0].photo_url;
+    if (!storedPath || !storedPath.startsWith('/uploads/')) {
+      return res.status(404).json({ error: 'No evidence is attached to this report' });
+    }
+    const filename = path.basename(storedPath);
+    res.set('Cache-Control', 'private, no-store');
+    res.sendFile(filename, { root: uploadDir }, (err) => {
+      if (err && !res.headersSent) res.status(404).json({ error: 'Evidence file is unavailable' });
+    });
+  } catch (err) {
+    console.error('GET incident media:', err.message);
+    res.status(500).json({ error: 'Could not retrieve evidence' });
   }
 });
 

@@ -182,15 +182,7 @@ class _HomeScreenState extends State<HomeScreen> {
     required String body,
     required String category,
   }) async {
-    final text = '🏛️ *CITY OF BULAWAYO — OFFICIAL NOTICE*\n'
-        '📌 *$title*\n'
-        '📂 *Category:* $category\n\n'
-        '$body\n\n'
-        '━━━━━━━━━━━━━━━━━━\n'
-        '📢 Official Channel: https://whatsapp.com/channel/0029VbA48WT1iUxQRxulvU41\n'
-        '💬 Customer Care (0784 136 505): https://wa.me/263784136505\n'
-        '💧 Water Meter Readings (0713 347 319): https://wa.me/263713347319';
-
+    final text = 'Notice shared by a resident (not an official BCC broadcast):\n\n$title\n\n$body';
     final uri = Uri.parse('https://api.whatsapp.com/send?text=${Uri.encodeComponent(text)}');
     try {
       if (await canLaunchUrl(uri)) {
@@ -454,12 +446,10 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: 14),
 
-          // Reservoir Status Progress Bars
-          _buildReservoirBar('Criterion Waterworks', 0.41, '41% — Operational'),
-          const SizedBox(height: 8),
-          _buildReservoirBar('Magwegwe Reservoir', 0.38, '38% — Pumping Active'),
-          const SizedBox(height: 8),
-          _buildReservoirBar('Tuli Hill Reservoir', 0.35, '35% — 48-hr Shedding Zone'),
+          const Text(
+            'Live reservoir levels and supply schedules are not available in the app. Check the council source for current information.',
+            style: TextStyle(fontSize: 12, color: BccColors.textMuted, height: 1.4),
+          ),
 
           const SizedBox(height: 14),
           const Divider(height: 1, color: Color(0xFFF1F5F9)),
@@ -472,15 +462,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 width: 8,
                 height: 8,
                 decoration: const BoxDecoration(
-                  color: Color(0xFF16A34A),
+                  color: Color(0xFF94A3B8),
                   shape: BoxShape.circle,
                 ),
               ),
               const SizedBox(width: 6),
               const Expanded(
                 child: Text(
-                  'Today: Zone 4 Scheduled Supply Open',
-                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF15803D)),
+                  'No verified live supply schedule available',
+                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: BccColors.textMuted),
                 ),
               ),
               InkWell(
@@ -891,57 +881,9 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 24),
           const ListTile(
             contentPadding: EdgeInsets.zero,
-            leading: Icon(Icons.phone_outlined, color: BccColors.primaryForest),
-            title: Text('BCC Call Centre'),
-            subtitle: Text('+263 2922 75011 / 75012'),
-          ),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(
-              Icons.chat_bubble_outline_rounded,
-              color: Color(0xFF16A34A),
-            ),
-            title: const Text('WhatsApp Customer Care'),
-            subtitle: const Text('+263 78 413 6505 (General updates & enquiries)'),
-            trailing: const Icon(Icons.open_in_new_rounded, size: 16),
-            onTap: () async {
-              final uri = Uri.parse('https://wa.me/263784136505?text=Hello%20City%20of%20Bulawayo%20Customer%20Care,%20I%20would%20like%20to%20make%20an%20enquiry.');
-              if (await canLaunchUrl(uri)) {
-                await launchUrl(uri, mode: LaunchMode.externalApplication);
-              }
-            },
-          ),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(
-              Icons.water_drop_outlined,
-              color: Color(0xFF0284C7),
-            ),
-            title: const Text('Submit Water Meter Readings'),
-            subtitle: const Text('+263 71 334 7319 (Monthly readings & photo submission)'),
-            trailing: const Icon(Icons.open_in_new_rounded, size: 16),
-            onTap: () async {
-              final uri = Uri.parse('https://wa.me/263713347319?text=Hello%20City%20of%20Bulawayo,%20I%20am%20submitting%20my%20monthly%20water%20meter%20reading.%0AAccount%20No:%20%0AAddress:%20%0AMeter%20Reading:%20');
-              if (await canLaunchUrl(uri)) {
-                await launchUrl(uri, mode: LaunchMode.externalApplication);
-              }
-            },
-          ),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(
-              Icons.campaign_outlined,
-              color: Color(0xFF16A34A),
-            ),
-            title: const Text('Official City WhatsApp Channel'),
-            subtitle: const Text('Follow for daily water shedding & notices'),
-            trailing: const Icon(Icons.open_in_new_rounded, size: 16),
-            onTap: () async {
-              final uri = Uri.parse('https://whatsapp.com/channel/0029VbA48WT1iUxQRxulvU41');
-              if (await canLaunchUrl(uri)) {
-                await launchUrl(uri, mode: LaunchMode.externalApplication);
-              }
-            },
+            leading: Icon(Icons.info_outline_rounded, color: BccColors.textMuted),
+            title: Text('Council contact directory unavailable'),
+            subtitle: Text('Contact details will appear here after BCC verifies and publishes them.'),
           ),
           ListTile(
             contentPadding: EdgeInsets.zero,
@@ -950,7 +892,7 @@ class _HomeScreenState extends State<HomeScreen> {
               color: Color(0xFF0C3827),
             ),
             title: const Text('WhatsApp Ward Groups & Directory'),
-            subtitle: const Text('Browse verified Ward 1 to 29 communities'),
+            subtitle: const Text('Verified contact channels appear here when available'),
             trailing: const Icon(Icons.chevron_right_rounded),
             onTap: _openWhatsAppCommunity,
           ),

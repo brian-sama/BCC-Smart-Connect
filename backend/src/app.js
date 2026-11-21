@@ -31,12 +31,18 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
-const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') ?? ['*'];
-app.use(cors({ origin: allowedOrigins }));
-app.use(express.json());
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || (process.env.NODE_ENV === 'development' ? 'http://localhost:5173,http://localhost:3000' : ''))
+  .split(',').map((origin) => origin.trim()).filter(Boolean);
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error('Origin is not allowed by CORS'));
+  },
+}));
+app.use(express.json({ limit: '1mb' }));
 
-// Serve uploaded fault evidence statically
-app.use('/uploads', express.static(uploadsDir));
+// Evidence is not served as public static content. A private, authorized
+// media delivery route/object store is required before production access.
 
 // Rate limiters for public endpoints
 const authLimiter = rateLimit({
@@ -62,12 +68,23 @@ app.use('/api/bulletins',     bulletinRoutes);
 app.use('/api/teams',         teamRoutes);
 app.use('/api/whatsapp',      whatsappRoutes);
 
-app.get('/health', (_req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));
+app.get('/health/live', (_req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));
+app.get('/health/ready', async (_req, res) => {
+  try {
+    const pool = require('./config/db');
+    const ready = await pool.query("SELECT 1 FROM schema_migrations WHERE filename = '006_bulletin_creator_review.sql'");
+    if (!ready.rowCount) return res.status(503).json({ status: 'schema_not_ready' });
+    res.json({ status: 'ready', ts: new Date().toISOString() });
+  } catch (_) {
+    res.status(503).json({ status: 'not_ready' });
+  }
+});
+app.get('/health', (_req, res) => res.redirect(308, '/health/live'));
 
 // Global error handler — catches anything passed to next(err)
 app.use((err, _req, res, _next) => {
-  console.error('Unhandled error:', err);
-  res.status(500).json({ error: err.message || 'Internal server error' });
+  console.error('Unhandled API error:', err.message);
+  res.status(500).json({ error: 'Internal server error' });
 });
 
 const PORT = Number(process.env.PORT) || 3000;

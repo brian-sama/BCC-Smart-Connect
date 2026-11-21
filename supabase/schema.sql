@@ -125,27 +125,4 @@ CREATE INDEX IF NOT EXISTS idx_incidents_reporter  ON incidents(reporter_id);
 CREATE INDEX IF NOT EXISTS idx_timeline_incident   ON incident_timeline(incident_id);
 CREATE INDEX IF NOT EXISTS idx_bulletins_created   ON bulletins(created_at DESC);
 
--- 9. Seed Realistic Initial Bulawayo Data
-INSERT INTO field_teams (name, role, department, status, active_ticket, avatar, phone)
-VALUES
-  ('Eng. Nomvula Dube',  'Water Distribution Lead',  'Engineering Services',     'On Site',   'BCC-20260904-W281', 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=120&h=120&q=80', '+263 77 200 1122'),
-  ('Sipho Mthethwa',     'Sewerage Rapid Response',  'Health Services',           'Dispatched', 'BCC-20260904-S104', 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&h=120&q=80', '+263 71 333 4455'),
-  ('Famona Unit 4',      'Emergency Medical Rescue', 'Emergency & Fire Services', 'On Site',   'BCC-20260904-E001', 'https://images.unsplash.com/photo-1584467735815-f778f274e296?auto=format&fit=crop&w=120&h=120&q=80', '+263 2922 71717'),
-  ('BCC Roads Gang 2',   'Asphalt Surface Gang',     'Engineering Services',     'Available', NULL,                 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=120&h=120&q=80', '+263 78 444 8899')
-ON CONFLICT DO NOTHING;
-
-INSERT INTO bulletins (title, body, category, target_ward, is_urgent)
-VALUES
-  ('Criterion Water Works Maintenance',  'Scheduled water supply reduction in Eastern suburbs between 08:00 and 17:00 tomorrow due to valve rehabilitation.',  'Water Cut', 'Eastern Suburbs',       true),
-  ('Luveve Road Resurfacing Update',     'Asphalt paving along Luveve Road near Mpilo Hospital is progressing. Single lane traffic diversions in place.',       'Roads',     'Luveve & Magwegwe',     false),
-  ('Refuse Collection Cycle (Ward 28)', 'Domestic refuse compaction trucks will service Cowdray Park sections 1 to 6 this Friday morning.',                    'Health',    'Cowdray Park (Ward 28)', false)
-ON CONFLICT DO NOTHING;
-
-INSERT INTO incidents (reference_number, reporter_name, reporter_phone, incident_type, status, description, address, lat, lng, department, assigned_to_name, is_emergency)
-VALUES
-  ('BCC-20260904-W281', 'Themba Moyo',       '+263 77 234 5678', 'WaterLeak',   'InProgress', 'Burst main transmission pipe leaking clean drinking water across road.', 'Cowdray Park, Stand 14203',                 -20.0821, 28.5034, 'Engineering Services',     'Eng. Nomvula Dube',  false),
-  ('BCC-20260904-S104', 'Sipho Ndlovu',      '+263 71 890 1234', 'SewerBurst',  'Assigned',   'Sewer manhole overflowing into street ditch near school entrance.',      'Nkulumane 12, Sekusile Shopping Centre',  -20.1983, 28.5291, 'Health Services',           'Sipho Mthethwa',     false),
-  ('BCC-20260904-E001', 'Witness Alert',     '+263 78 555 4321', 'Ambulance',   'InProgress', 'Road traffic collision on Khami Road. Urgent medical assistance required.', 'Khami Road near Kelvin North Industrial', -20.1542, 28.5412, 'Emergency & Fire Services', 'Famona Unit 4',      true),
-  ('BCC-20260904-R899', 'Tariro Hove',       '+263 77 111 2233', 'RoadDamage',  'Resolved',   'Deep pothole repaired with asphalt cold-mix.',                           'Bradfield, 12th Avenue Extension',         -20.1742, 28.6011, 'Engineering Services',     'BCC Roads Gang 2',   false),
-  ('BCC-20260904-L402', 'Anonymous Citizen', NULL,               'StreetLight', 'New',        'Streetlight array flickering and causing electrical hazard on overhead wire.', 'Suburbs, Park Road / 8th Avenue',      -20.1520, 28.6045, 'Electrical Services',      NULL,                 false)
-ON CONFLICT (reference_number) DO NOTHING;
+-- Sample operational records are intentionally not seeded.

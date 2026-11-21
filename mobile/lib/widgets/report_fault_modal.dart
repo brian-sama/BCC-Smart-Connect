@@ -25,8 +25,12 @@ class _ReportFaultModalState extends State<ReportFaultModal> {
   final _descCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
 
-  double _lat = -20.1500;
-  double _lng = 28.5800;
+  double? _lat;
+  double? _lng;
+  double? _accuracyMeters;
+  DateTime? _locationCapturedAt;
+  bool _locationConfirmed = false;
+  bool _locationFromMap = false;
   bool _isLocating = false;
 
   File? _photoFile;
@@ -99,6 +103,10 @@ class _ReportFaultModalState extends State<ReportFaultModal> {
         setState(() {
           _lat = pos.latitude;
           _lng = pos.longitude;
+          _accuracyMeters = pos.accuracy;
+          _locationCapturedAt = DateTime.now().toUtc();
+          _locationConfirmed = true;
+          _locationFromMap = false;
         });
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -193,18 +201,31 @@ class _ReportFaultModalState extends State<ReportFaultModal> {
   Future<void> _openMapPinPicker() async {
     final result = await showDialog<LatLng>(
       context: context,
-      builder: (ctx) => MapPickerDialog(initialLat: _lat, initialLng: _lng),
+      builder: (ctx) => MapPickerDialog(
+        initialLat: _lat ?? -20.1500,
+        initialLng: _lng ?? 28.5800,
+      ),
     );
 
     if (result != null) {
       setState(() {
         _lat = result.latitude;
         _lng = result.longitude;
+        _accuracyMeters = null;
+        _locationCapturedAt = DateTime.now().toUtc();
+        _locationConfirmed = true;
+        _locationFromMap = true;
       });
     }
   }
 
   Future<void> _handleSubmit() async {
+    if (!_locationConfirmed || _lat == null || _lng == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Confirm your location with GPS or a map pin before submitting.')),
+      );
+      return;
+    }
     if (_descCtrl.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -232,27 +253,32 @@ class _ReportFaultModalState extends State<ReportFaultModal> {
         : '$suburb (General Ward Area)';
 
     try {
+      var photoUploaded = _photoFile == null;
       final incident = await BccApiService.submitIncident(
         incidentType: _selectedType,
         description: _descCtrl.text.trim(),
         address: fullAddress,
-        lat: _lat,
-        lng: _lng,
+        lat: _lat!,
+        lng: _lng!,
+        locationSource: _locationFromMap ? 'manual_pin' : 'gps',
+        locationAccuracyMeters: _accuracyMeters,
+        locationCapturedAt: _locationCapturedAt!,
         phone: _phoneCtrl.text.trim().isNotEmpty
             ? _phoneCtrl.text.trim()
             : null,
       );
 
       if (_photoFile != null) {
-        await BccApiService.uploadPhoto(
+        final url = await BccApiService.uploadPhoto(
           incidentId: incident.id,
           photoFile: _photoFile!,
         );
+        photoUploaded = url != null;
       }
 
       if (mounted) {
         Navigator.pop(context, incident);
-        _showSuccessDialog(incident);
+        _showSuccessDialog(incident, photoUploaded: photoUploaded);
       }
     } catch (error) {
       if (mounted) {
@@ -266,7 +292,7 @@ class _ReportFaultModalState extends State<ReportFaultModal> {
     }
   }
 
-  void _showSuccessDialog(IncidentModel incident) {
+  void _showSuccessDialog(IncidentModel incident, {required bool photoUploaded}) {
     showDialog(
       context: context,
       builder: (ctx) => Dialog(
@@ -324,8 +350,10 @@ class _ReportFaultModalState extends State<ReportFaultModal> {
                 ),
               ),
               const SizedBox(height: 14),
-              const Text(
-                'BCC response dispatchers will review this report. Keep your reference code to track progress.',
+              Text(
+                photoUploaded
+                    ? 'Your report was received by SmartConnect. Staff review and response timing are not confirmed.'
+                    : 'Your report was received by SmartConnect, but the photo could not be attached. Staff review and response timing are not confirmed.',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 12, color: BccColors.textMuted),
               ),
@@ -466,6 +494,19 @@ class _ReportFaultModalState extends State<ReportFaultModal> {
             const SizedBox(height: 16),
 
             // Location Controls (GPS + Pin Drop)
+            Text(
+              !_locationConfirmed
+                  ? 'Location not confirmed. Choose GPS or place and confirm a map pin.'
+                  : _locationFromMap
+                      ? 'Location confirmed from your map pin.'
+                      : 'GPS location confirmed (± ${_accuracyMeters?.round() ?? 'unknown'} m).',
+              style: TextStyle(
+                fontSize: 12,
+                color: _locationConfirmed ? BccColors.primaryForest : BccColors.emergencyRed,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
             Row(
               children: [
                 Expanded(

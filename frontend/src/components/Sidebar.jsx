@@ -85,7 +85,7 @@ export default function Sidebar({ currentTab, onSelectTab, onOpenMap, onOpenBroa
         <nav style={styles.navList}>
           <button style={styles.navItem} onClick={() => onOpenBroadcast()}>
             <BellRing size={19} />
-            <span>Broadcast Alert</span>
+            <span>Notice Draft</span>
           </button>
 
           <button
@@ -93,8 +93,7 @@ export default function Sidebar({ currentTab, onSelectTab, onOpenMap, onOpenBroa
             onClick={() => onOpenWhatsApp && onOpenWhatsApp()}
           >
             <MessageCircle size={19} color="#25D366" />
-            <span style={{ fontWeight: '700' }}>WhatsApp Hub</span>
-            <span style={{ ...styles.pillBadge, backgroundColor: '#25D366' }}>OFFICIAL</span>
+            <span style={{ fontWeight: '700' }}>Verified Contacts</span>
           </button>
 
           <button style={styles.navItem} onClick={() => onSelectTab('analytics')}>
@@ -104,10 +103,10 @@ export default function Sidebar({ currentTab, onSelectTab, onOpenMap, onOpenBroa
 
           <button
             style={styles.navItem}
-            onClick={() => window.open('https://wa.me/263784136505?text=Hello%20City%20of%20Bulawayo%20Customer%20Care,%20I%20would%20like%20to%20make%20an%20enquiry.', '_blank')}
+            onClick={() => onOpenWhatsApp && onOpenWhatsApp()}
           >
             <HelpCircle size={19} />
-            <span>BCC Customer Care</span>
+            <span>Contact directory</span>
           </button>
 
           <button style={styles.navItem} onClick={() => onSelectTab('login')}>

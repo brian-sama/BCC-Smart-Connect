@@ -103,7 +103,7 @@ class _TrackReferenceDialogState extends State<TrackReferenceDialog> {
                       controller: _refCtrl,
                       textCapitalization: TextCapitalization.characters,
                       decoration: InputDecoration(
-                        hintText: 'Enter BCC-YYYYMMDD-XXXX',
+                        hintText: 'Enter your BCC reference number',
                         hintStyle: const TextStyle(
                           fontSize: 13,
                           color: Colors.grey,

@@ -1,22 +1,22 @@
 import React from 'react';
 import { Siren, CheckCircle2 } from 'lucide-react';
 
-export default function PriorityEmergencyCard({ incident, onSelectIncident }) {
+export default function PriorityEmergencyCard({ incident, unavailable = false, onSelectIncident }) {
   if (!incident) {
     return (
       <div style={styles.card}>
         <div>
           <div style={{ ...styles.badgeRow, backgroundColor: '#DCFCE7' }}>
             <div style={{ ...styles.pulseDot, backgroundColor: '#15803D' }} />
-            <span style={{ ...styles.badgeText, color: '#15803D' }}>EMERGENCY STATUS: ALL CLEAR</span>
+            <span style={{ ...styles.badgeText, color: '#15803D' }}>EMERGENCY REPORTS</span>
           </div>
-          <h3 style={styles.title}>No Active Critical Emergencies</h3>
-          <p style={styles.subtext}>Bulawayo emergency dispatch channels are clear. No pending 999 or SOS alerts.</p>
+          <h3 style={styles.title}>{unavailable ? 'Emergency reports unavailable' : 'No open emergency report in the loaded records'}</h3>
+          <p style={styles.subtext}>{unavailable ? 'Sign in with an authorized staff account to load reports.' : 'This view does not monitor dispatch channels or verify emergency response availability.'}</p>
         </div>
 
         <div style={styles.clearStatusFooter}>
           <CheckCircle2 size={16} color="#15803D" />
-          <span>Real-time database listener active</span>
+          <span>Loaded incident data only</span>
         </div>
       </div>
     );
@@ -27,7 +27,7 @@ export default function PriorityEmergencyCard({ incident, onSelectIncident }) {
       <div>
         <div style={styles.badgeRow}>
           <div style={styles.pulseDot} />
-          <span style={styles.badgeText}>URGENT DISPATCH CALL</span>
+          <span style={styles.badgeText}>EMERGENCY REPORT SUBMITTED</span>
         </div>
         <h3 style={styles.title}>{incident.description}</h3>
         <p style={styles.subtext}>{incident.address} • Reference: {incident.reference_number}</p>
@@ -35,7 +35,7 @@ export default function PriorityEmergencyCard({ incident, onSelectIncident }) {
 
       <button style={styles.actionBtn} onClick={() => onSelectIncident(incident)}>
         <Siren size={18} />
-        <span>Deploy Field Crew</span>
+        <span>Review report</span>
       </button>
     </div>
   );

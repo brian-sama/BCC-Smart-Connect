@@ -1,43 +1,60 @@
 require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const pool = require('../config/db');
 
 async function migrate() {
-  console.log('Connecting to Neon PostgreSQL database...');
-
+  const client = await pool.connect();
   try {
-    const migrationsDir = path.join(__dirname, '../../sql/migrations');
-    const migrationFiles = fs.readdirSync(migrationsDir).filter(f => f.endsWith('.sql')).sort();
-
-    console.log(`Found ${migrationFiles.length} migration files in sql/migrations`);
-
-    for (const file of migrationFiles) {
-      console.log(`\nApplying migration: ${file}...`);
-      const sqlPath = path.join(migrationsDir, file);
-      const sqlContent = fs.readFileSync(sqlPath, 'utf8');
-
-      await pool.query(sqlContent);
-      console.log(`✓ Migration ${file} applied successfully.`);
-    }
-
-    // Verify WhatsApp channels table
-    const { rows } = await pool.query(`
-      SELECT id, name, category, ward, phone_number, invite_url
-      FROM whatsapp_channels
-      ORDER BY category ASC, name ASC
+    await client.query('SELECT pg_advisory_lock($1)', [72422026]);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS schema_migrations (
+        filename TEXT PRIMARY KEY,
+        checksum TEXT NOT NULL,
+        applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
     `);
 
-    console.log(`\n✓ Verification: Found ${rows.length} records in 'whatsapp_channels' on Neon DB:`);
-    console.table(rows);
+    const migrationsDir = path.join(__dirname, '../../sql/migrations');
+    const files = fs.readdirSync(migrationsDir).filter((file) => file.endsWith('.sql')).sort();
+    for (const filename of files) {
+      const sql = fs.readFileSync(path.join(migrationsDir, filename), 'utf8');
+      const checksum = crypto.createHash('sha256').update(sql).digest('hex');
+      const existing = await client.query(
+        'SELECT checksum FROM schema_migrations WHERE filename = $1',
+        [filename]
+      );
+      if (existing.rowCount) {
+        if (existing.rows[0].checksum !== checksum) {
+          throw new Error(`Applied migration ${filename} was edited. Add a new migration instead.`);
+        }
+        continue;
+      }
 
-    console.log('\nAll Neon database migrations completed successfully.');
-  } catch (err) {
-    console.error('Migration failed with error:', err);
-    process.exit(1);
+      await client.query('BEGIN');
+      try {
+        await client.query(sql);
+        await client.query(
+          'INSERT INTO schema_migrations (filename, checksum) VALUES ($1, $2)',
+          [filename, checksum]
+        );
+        await client.query('COMMIT');
+        console.log(`Applied ${filename}`);
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      }
+    }
+    console.log(`Database schema is current (${files.length} migrations).`);
   } finally {
+    try { await client.query('SELECT pg_advisory_unlock($1)', [72422026]); } catch (_) {}
+    client.release();
     await pool.end();
   }
 }
 
-migrate();
+migrate().catch((err) => {
+  console.error('Migration failed:', err.message);
+  process.exitCode = 1;
+});

@@ -40,6 +40,7 @@ export default function App() {
   // Bumped after sign-in so incidents are re-fetched with the new token
   const [sessionVersion, setSessionVersion] = useState(0);
   const [emergencyBanner, setEmergencyBanner] = useState(null);
+  const [dataError, setDataError] = useState('');
 
   // 1. Initial Data Fetch & Real-time Live Sync
   useEffect(() => {
@@ -52,6 +53,7 @@ export default function App() {
           bccApi.getFieldTeams(),
         ]);
         if (isMounted) {
+          setDataError('');
           if (Array.isArray(fetchedIncidents)) {
             setIncidents(fetchedIncidents);
           }
@@ -60,7 +62,8 @@ export default function App() {
           }
         }
       } catch (err) {
-        console.error('Failed to load database data:', err);
+        if (isMounted) setDataError('Staff sign-in is required to load operational records. No metrics are available.');
+        console.error('Failed to load operational records:', err);
       }
     }
 
@@ -165,7 +168,7 @@ export default function App() {
             <div style={styles.emergencyBannerLeft}>
               <Siren size={20} color="#FFFFFF" className="pulse-icon" />
               <span>
-                <strong>CRITICAL EMERGENCY REPORTED:</strong> {emergencyBanner.description} ({emergencyBanner.address})
+                <strong>EMERGENCY REPORT SUBMITTED:</strong> {emergencyBanner.description} ({emergencyBanner.address})
               </span>
             </div>
             <div style={styles.emergencyBannerRight}>
@@ -176,7 +179,7 @@ export default function App() {
                   setEmergencyBanner(null);
                 }}
               >
-                Dispatch Crew
+                Review report
               </button>
               <button
                 style={styles.bannerCloseBtn}
@@ -190,6 +193,11 @@ export default function App() {
 
         {/* Dynamic Views Canvas */}
         <main style={styles.canvas}>
+          {dataError && (
+            <div role="alert" style={styles.dataError}>
+              {dataError}
+            </div>
+          )}
           {currentTab === 'dashboard' && (
             <>
               {/* Dashboard Title & Actions Header */}
@@ -197,13 +205,13 @@ export default function App() {
                 <div>
                   <h1 style={styles.canvasTitle}>Dashboard</h1>
                   <p style={styles.canvasSubtitle}>
-                    A real-time overview of municipal faults, emergency dispatch, and field crew status.
+                    Incident reports currently returned by the service API. Emergency dispatch and aggregate reporting are not configured.
                   </p>
                 </div>
                 <div style={styles.headerActions}>
                   <button style={styles.primaryActionBtn} onClick={() => setIsBroadcastOpen(true)}>
                     <Plus size={16} />
-                    <span>+ Broadcast Alert</span>
+                    <span>+ Notice Draft</span>
                   </button>
                   <button style={styles.secondaryActionBtn} onClick={() => setIsMapOpen(true)}>
                     <MapPin size={16} />
@@ -215,28 +223,28 @@ export default function App() {
               {/* ROW 1: 4 KPI Cards */}
               <div style={styles.statGrid}>
                 <StatCard
-                  title="Total Incidents Logged"
-                  value={incidents.length}
-                  subtitle="▲ +12% from last week"
+                  title="Loaded incidents"
+                  value={dataError ? '—' : incidents.length}
+                  subtitle="Current API response only"
                   isPrimary={true}
                   onClick={() => setCurrentTab('incidents')}
                 />
                 <StatCard
                   title="Incidents In Progress"
-                  value={inProgressCount}
-                  subtitle="Active field crews"
+                  value={dataError ? '—' : inProgressCount}
+                  subtitle="In loaded incident records"
                   onClick={() => setCurrentTab('incidents')}
                 />
                 <StatCard
                   title="Pending Triage / New"
-                  value={pendingCount}
-                  subtitle="Critical civic queue"
+                  value={dataError ? '—' : pendingCount}
+                  subtitle="In loaded incident records"
                   onClick={() => setCurrentTab('incidents')}
                 />
                 <StatCard
-                  title="Resolved (Today)"
-                  value={resolvedCount}
-                  subtitle="Avg resolution 3.8 hrs"
+                  title="Resolved in loaded records"
+                  value={dataError ? '—' : resolvedCount}
+                  subtitle="Not a daily aggregate"
                   onClick={() => setCurrentTab('incidents')}
                 />
               </div>
@@ -245,13 +253,13 @@ export default function App() {
               <div style={styles.middleGrid}>
                 <ActivityChartCard />
                 <PriorityEmergencyCard
-                  incident={incidents.find((i) => i.is_emergency && i.status !== 'Resolved')}
+                  unavailable={Boolean(dataError)}
+                  incident={dataError ? null : incidents.find((i) => i.is_emergency && !['Resolved', 'Closed'].includes(i.status))}
                   onSelectIncident={setSelectedIncident}
                 />
                 <RecentIncidentsCard
                   incidents={filteredIncidents}
                   onSelectIncident={setSelectedIncident}
-                  onNewIncident={() => setIsBroadcastOpen(true)}
                 />
               </div>
 
@@ -389,6 +397,14 @@ const styles = {
     margin: '0 auto',
     width: '100%',
     boxSizing: 'border-box',
+  },
+  dataError: {
+    padding: '12px 16px',
+    borderRadius: '10px',
+    border: '1px solid #FECACA',
+    background: '#FEF2F2',
+    color: '#991B1B',
+    fontSize: '13px',
   },
   canvasHeader: {
     display: 'flex',
