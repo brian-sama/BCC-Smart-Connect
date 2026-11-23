@@ -18,6 +18,9 @@ const whatsappRoutes     = require('./routes/whatsapp');
 const app    = express();
 const server = http.createServer(app);
 
+// Trust the first reverse proxy (Caddy/Nginx/Render) so rate limiting sees real client IPs
+app.set('trust proxy', 1);
+
 initSocket(server);
 
 // Ensure uploads directory exists

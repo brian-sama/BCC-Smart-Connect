@@ -112,7 +112,7 @@ class _ReportFaultModalState extends State<ReportFaultModal> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                'GPS Location Acquired: ${_lat.toStringAsFixed(4)}, ${_lng.toStringAsFixed(4)}',
+                'GPS Location Acquired: ${pos.latitude.toStringAsFixed(4)}, ${pos.longitude.toStringAsFixed(4)}',
               ),
               backgroundColor: BccColors.primaryForest,
             ),
