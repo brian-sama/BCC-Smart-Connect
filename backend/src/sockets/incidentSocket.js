@@ -5,9 +5,26 @@ const pool = require('../config/db');
 let _io = null;
 
 function initSocket(httpServer) {
+  const allowed = (process.env.ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((origin) => origin.trim().replace(/\/+$/, ''))
+    .filter(Boolean);
+
   _io = new Server(httpServer, {
     cors: {
-      origin: (process.env.ALLOWED_ORIGINS || '').split(',').map((origin) => origin.trim()).filter(Boolean),
+      origin(origin, callback) {
+        if (!origin) return callback(null, true);
+        const clean = origin.trim().replace(/\/+$/, '');
+        if (
+          allowed.includes('*') ||
+          allowed.includes(clean) ||
+          /^https:\/\/([a-z0-9-]+--)?bccsmartconnect\.netlify\.app$/i.test(clean) ||
+          /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(clean)
+        ) {
+          return callback(null, true);
+        }
+        return callback(new Error(`Origin ${origin} is not allowed by CORS`));
+      },
       methods: ['GET', 'POST'],
     },
   });

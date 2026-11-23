@@ -18,6 +18,9 @@ const whatsappRoutes     = require('./routes/whatsapp');
 const app    = express();
 const server = http.createServer(app);
 
+// Trust the first reverse proxy (Caddy/Nginx/Render) so rate limiting sees real client IPs
+app.set('trust proxy', 1);
+
 initSocket(server);
 
 // Ensure uploads directory exists
@@ -32,11 +35,25 @@ app.use(helmet({
 }));
 
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || (process.env.NODE_ENV === 'development' ? 'http://localhost:5173,http://localhost:3000' : ''))
-  .split(',').map((origin) => origin.trim()).filter(Boolean);
+  .split(',')
+  .map((origin) => origin.trim().replace(/\/+$/, ''))
+  .filter(Boolean);
+
+function isOriginAllowed(origin) {
+  if (!origin) return true;
+  const clean = origin.trim().replace(/\/+$/, '');
+  if (allowedOrigins.includes('*') || allowedOrigins.includes(clean)) return true;
+  // Allow Netlify branch/deploy previews for bccsmartconnect.netlify.app
+  if (/^https:\/\/([a-z0-9-]+--)?bccsmartconnect\.netlify\.app$/i.test(clean)) return true;
+  // Allow local development on any localhost/127.0.0.1 port (e.g. Vite, Flutter Web)
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(clean)) return true;
+  return false;
+}
+
 app.use(cors({
   origin(origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
-    return callback(new Error('Origin is not allowed by CORS'));
+    if (isOriginAllowed(origin)) return callback(null, true);
+    return callback(new Error(`Origin ${origin} is not allowed by CORS`));
   },
 }));
 app.use(express.json({ limit: '1mb' }));

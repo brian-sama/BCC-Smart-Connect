@@ -8,7 +8,10 @@
     "start": "node src/app.js",
     "dev": "nodemon src/app.js",
     "migrate": "node src/scripts/runMigrations.js",
-    "test": "node --test --test-concurrency=1 test/*.test.js"
+    "test": "node --test test/unit.test.js",
+    "test:unit": "node --test test/unit.test.js",
+    "test:live": "node --test test/live-e2e.test.js",
+    "test:full": "node --test --test-concurrency=1 test/api.test.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

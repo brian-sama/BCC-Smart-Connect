@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Radio, MapPin, AlertCircle, Siren, X } from 'lucide-react';
+import { Plus, Radio, MapPin, AlertCircle, Siren, X, UserPlus, LogOut } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import TopBar from './components/TopBar';
 import StatCard from './components/StatCard';
@@ -13,16 +13,19 @@ import LiveMapModal from './components/LiveMapModal';
 import IncidentDetailModal from './components/IncidentDetailModal';
 import BroadcastModal from './components/BroadcastModal';
 import LoginModal from './components/LoginModal';
+import CreateStaffModal from './components/CreateStaffModal';
 import IncidentQueueView from './components/IncidentQueueView';
 import AnalyticsView from './components/AnalyticsView';
 import FieldTeamsView from './components/FieldTeamsView';
 import WhatsAppChannelsModal from './components/WhatsAppChannelsModal';
 import { bccApi, getSavedUser } from './services/api';
 
+const STAFF_ROLES = ['Administrator', 'Dispatcher', 'Communications'];
+
 // Map the stored session user (if any) to the shape the TopBar expects
 function sessionUser() {
   const u = getSavedUser();
-  if (!u) return { name: 'Not signed in', role: 'Sign in to manage incidents', email: '' };
+  if (!u || !STAFF_ROLES.includes(u.role)) return null;
   return { name: `${u.first_name ?? ''} ${u.last_name ?? ''}`.trim() || u.email, role: u.role, email: u.email ?? '' };
 }
 
@@ -36,14 +39,16 @@ export default function App() {
   const [isBroadcastOpen, setIsBroadcastOpen] = useState(false);
   const [isWhatsAppOpen, setIsWhatsAppOpen] = useState(false);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
+  const [isCreateStaffOpen, setIsCreateStaffOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState(sessionUser);
   // Bumped after sign-in so incidents are re-fetched with the new token
   const [sessionVersion, setSessionVersion] = useState(0);
   const [emergencyBanner, setEmergencyBanner] = useState(null);
   const [dataError, setDataError] = useState('');
 
-  // 1. Initial Data Fetch & Real-time Live Sync
+  // 1. Initial Data Fetch & Real-time Live Sync (only when signed in as BCC staff)
   useEffect(() => {
+    if (!currentUser) return undefined;
     let isMounted = true;
 
     async function loadData() {
@@ -91,7 +96,28 @@ export default function App() {
       isMounted = false;
       unsubscribe();
     };
-  }, [sessionVersion]);
+  }, [sessionVersion, currentUser]);
+
+  const handleLogout = () => {
+    bccApi.logout();
+    setIncidents([]);
+    setTeams([]);
+    setCurrentUser(null);
+  };
+
+  // Gate the entire Staff Portal behind the Login page until authenticated as BCC staff
+  if (!currentUser) {
+    return (
+      <LoginModal
+        isOpen={true}
+        fullScreen={true}
+        onLogin={(userData) => {
+          setCurrentUser(userData);
+          setSessionVersion((v) => v + 1);
+        }}
+      />
+    );
+  }
 
   // 2. Incident Update Handler (Persisted to Cloud)
   const handleUpdateStatus = async (id, updates) => {
@@ -209,6 +235,12 @@ export default function App() {
                   </p>
                 </div>
                 <div style={styles.headerActions}>
+                  {currentUser.role === 'Administrator' && (
+                    <button style={styles.secondaryActionBtn} onClick={() => setIsCreateStaffOpen(true)}>
+                      <UserPlus size={16} />
+                      <span>Create Staff</span>
+                    </button>
+                  )}
                   <button style={styles.primaryActionBtn} onClick={() => setIsBroadcastOpen(true)}>
                     <Plus size={16} />
                     <span>+ Notice Draft</span>
@@ -216,6 +248,10 @@ export default function App() {
                   <button style={styles.secondaryActionBtn} onClick={() => setIsMapOpen(true)}>
                     <MapPin size={16} />
                     <span>Live Map View</span>
+                  </button>
+                  <button style={styles.secondaryActionBtn} onClick={handleLogout} title="Sign Out">
+                    <LogOut size={16} />
+                    <span>Sign Out</span>
                   </button>
                 </div>
               </div>
@@ -323,6 +359,11 @@ export default function App() {
       <WhatsAppChannelsModal
         isOpen={isWhatsAppOpen}
         onClose={() => setIsWhatsAppOpen(false)}
+      />
+
+      <CreateStaffModal
+        isOpen={isCreateStaffOpen}
+        onClose={() => setIsCreateStaffOpen(false)}
       />
 
       <LoginModal
