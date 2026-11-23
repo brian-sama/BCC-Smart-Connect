@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'constants/bcc_colors.dart';
+import 'screens/auth_screen.dart';
 import 'screens/home_screen.dart';
 import 'services/supabase_service.dart';
 
@@ -57,6 +58,7 @@ class _AppEntry extends StatefulWidget {
 
 class _AppEntryState extends State<_AppEntry> {
   bool _checking = true;
+  bool _hasSession = false;
 
   @override
   void initState() {
@@ -65,9 +67,12 @@ class _AppEntryState extends State<_AppEntry> {
   }
 
   Future<void> _checkSession() async {
-    await BccApiService.getToken();
+    final token = await BccApiService.getToken();
     if (mounted) {
-      setState(() => _checking = false);
+      setState(() {
+        _hasSession = token != null && token.isNotEmpty;
+        _checking = false;
+      });
     }
   }
 
@@ -81,6 +86,6 @@ class _AppEntryState extends State<_AppEntry> {
         ),
       );
     }
-    return const HomeScreen();
+    return _hasSession ? const HomeScreen() : const AuthScreen();
   }
 }

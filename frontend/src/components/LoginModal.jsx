@@ -1,13 +1,12 @@
 import React, { useState } from 'react';
-import { X, ShieldCheck, Lock, Mail, Loader2 } from 'lucide-react';
+import { X, ShieldCheck, Lock, User, Loader2 } from 'lucide-react';
 import { bccApi } from '../services/api';
 
-export default function LoginModal({ isOpen, onClose, onLogin }) {
-  const [tab, setTab] = useState('login'); // 'login' | 'register'
+const STAFF_ROLES = ['Administrator', 'Dispatcher', 'Communications'];
+
+export default function LoginModal({ isOpen, onClose, onLogin, fullScreen = false }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -18,13 +17,18 @@ export default function LoginModal({ isOpen, onClose, onLogin }) {
     setError('');
     setLoading(true);
     try {
-      const data = await bccApi.login(email, password);
+      const data = await bccApi.login(email.trim(), password);
+      if (!STAFF_ROLES.includes(data.user?.role)) {
+        bccApi.logout();
+        setError('Access denied. This portal is restricted to authorized BCC staff accounts.');
+        return;
+      }
       onLogin({
-        name: `${data.user.first_name} ${data.user.last_name}`,
+        name: `${data.user.first_name ?? ''} ${data.user.last_name ?? ''}`.trim() || data.user.email,
         role: data.user.role,
         email: data.user.email,
       });
-      onClose();
+      if (onClose) onClose();
     } catch (err) {
       setError(err.message || 'Login failed. Check your credentials.');
     } finally {
@@ -32,27 +36,8 @@ export default function LoginModal({ isOpen, onClose, onLogin }) {
     }
   };
 
-  const handleRegister = async (e) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-    try {
-      const data = await bccApi.register(firstName, lastName, email, password);
-      onLogin({
-        name: `${data.user.first_name} ${data.user.last_name}`,
-        role: data.user.role,
-        email: data.user.email,
-      });
-      onClose();
-    } catch (err) {
-      setError(err.message || 'Registration failed.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
-    <div style={styles.overlay}>
+    <div style={fullScreen ? styles.fullScreenWrap : styles.overlay}>
       <div style={styles.modal}>
         <div style={styles.header}>
           <div style={styles.headerTitleRow}>
@@ -64,136 +49,53 @@ export default function LoginModal({ isOpen, onClose, onLogin }) {
               <p style={styles.subtitle}>Bulawayo City Council Dispatch &amp; Emergency Portal</p>
             </div>
           </div>
-          <button style={styles.closeBtn} onClick={onClose}>
-            <X size={18} color="#64748B" />
-          </button>
+          {!fullScreen && onClose && (
+            <button style={styles.closeBtn} onClick={onClose} type="button">
+              <X size={18} color="#64748B" />
+            </button>
+          )}
         </div>
 
-        {/* Tab Switcher */}
-        <div style={styles.tabs}>
-          <button
-            style={{ ...styles.tab, ...(tab === 'login' ? styles.tabActive : {}) }}
-            onClick={() => { setTab('login'); setError(''); }}
-          >
-            Sign In
+        <form onSubmit={handleLogin} style={styles.form}>
+          {error && <div style={styles.errorBox}>{error}</div>}
+          <div style={styles.field}>
+            <label style={styles.label}>Staff Username or Email</label>
+            <div style={styles.inputWrapper}>
+              <User size={16} color="#94A3B8" />
+              <input
+                type="text"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                style={styles.input}
+                placeholder="admin or dispatcher@bcc.gov.zw"
+                autoComplete="username"
+                required
+              />
+            </div>
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>Password</label>
+            <div style={styles.inputWrapper}>
+              <Lock size={16} color="#94A3B8" />
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                style={styles.input}
+                placeholder="••••••••"
+                autoComplete="current-password"
+                required
+              />
+            </div>
+          </div>
+          <button type="submit" style={styles.submitBtn} disabled={loading}>
+            {loading ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : null}
+            <span>{loading ? 'Authenticating...' : 'Sign In to Staff Console'}</span>
           </button>
-          <button
-            style={{ ...styles.tab, ...(tab === 'register' ? styles.tabActive : {}) }}
-            onClick={() => { setTab('register'); setError(''); }}
-          >
-            Register
-          </button>
-        </div>
-
-        {/* Sign In Form */}
-        {tab === 'login' && (
-          <form onSubmit={handleLogin} style={styles.form}>
-            {error && <div style={styles.errorBox}>{error}</div>}
-            <div style={styles.field}>
-              <label style={styles.label}>Official Staff Email</label>
-              <div style={styles.inputWrapper}>
-                <Mail size={16} color="#94A3B8" />
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  style={styles.input}
-                  placeholder="dispatcher@cityofbulawayo.co.zw"
-                  required
-                />
-              </div>
-            </div>
-            <div style={styles.field}>
-              <label style={styles.label}>Password</label>
-              <div style={styles.inputWrapper}>
-                <Lock size={16} color="#94A3B8" />
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  style={styles.input}
-                  placeholder="••••••••"
-                  required
-                />
-              </div>
-            </div>
-            <button type="submit" style={styles.submitBtn} disabled={loading}>
-              {loading ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : null}
-              <span>{loading ? 'Authenticating...' : 'Authenticate & Access Console'}</span>
-            </button>
-          </form>
-        )}
-
-        {/* Register Form */}
-        {tab === 'register' && (
-          <form onSubmit={handleRegister} style={styles.form}>
-            {error && <div style={styles.errorBox}>{error}</div>}
-            <div style={{ ...styles.field, flexDirection: 'row', gap: '12px' }}>
-              <div style={{ flex: 1 }}>
-                <label style={styles.label}>First Name</label>
-                <div style={styles.inputWrapper}>
-                  <input
-                    type="text"
-                    value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
-                    style={styles.input}
-                    placeholder="Sipho"
-                    required
-                  />
-                </div>
-              </div>
-              <div style={{ flex: 1 }}>
-                <label style={styles.label}>Last Name</label>
-                <div style={styles.inputWrapper}>
-                  <input
-                    type="text"
-                    value={lastName}
-                    onChange={(e) => setLastName(e.target.value)}
-                    style={styles.input}
-                    placeholder="Moyo"
-                    required
-                  />
-                </div>
-              </div>
-            </div>
-            <div style={styles.field}>
-              <label style={styles.label}>Email Address</label>
-              <div style={styles.inputWrapper}>
-                <Mail size={16} color="#94A3B8" />
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  style={styles.input}
-                  placeholder="you@cityofbulawayo.co.zw"
-                  required
-                />
-              </div>
-            </div>
-            <div style={styles.field}>
-              <label style={styles.label}>Password (min 8 chars)</label>
-              <div style={styles.inputWrapper}>
-                <Lock size={16} color="#94A3B8" />
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  style={styles.input}
-                  placeholder="••••••••"
-                  minLength={8}
-                  required
-                />
-              </div>
-            </div>
-            <button type="submit" style={styles.submitBtn} disabled={loading}>
-              {loading ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : null}
-              <span>{loading ? 'Creating Account...' : 'Create Staff Account'}</span>
-            </button>
-          </form>
-        )}
+        </form>
 
         <p style={styles.noteText}>
-          All portal access is restricted to authorised BCC staff only.
+          Staff accounts can only be created by the Superadmin. Contact BCC IT for access.
         </p>
       </div>
     </div>
@@ -201,6 +103,15 @@ export default function LoginModal({ isOpen, onClose, onLogin }) {
 }
 
 const styles = {
+  fullScreenWrap: {
+    minHeight: '100vh',
+    width: '100%',
+    background: 'linear-gradient(135deg, #0D3B1E 0%, #1B5E20 55%, #0F172A 100%)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '24px',
+  },
   overlay: {
     position: 'fixed',
     top: 0, left: 0, right: 0, bottom: 0,
@@ -216,91 +127,115 @@ const styles = {
     backgroundColor: '#FFFFFF',
     borderRadius: '24px',
     width: '100%',
-    maxWidth: '460px',
-    boxShadow: '0 20px 40px rgba(0, 0, 0, 0.15)',
+    maxWidth: '440px',
+    boxShadow: '0 24px 48px rgba(0, 0, 0, 0.25)',
     overflow: 'hidden',
   },
   header: {
-    padding: '24px',
-    borderBottom: '1px solid #F1F5F9',
+    padding: '24px 24px 18px',
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
+    borderBottom: '1px solid #F1F5F9',
   },
-  headerTitleRow: { display: 'flex', alignItems: 'center', gap: '12px' },
+  headerTitleRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+  },
   logoBadge: {
-    width: '42px', height: '42px',
+    width: '42px',
+    height: '42px',
     borderRadius: '12px',
-    backgroundColor: '#0C3827',
-    border: '1px solid #D4AF37',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    boxShadow: '0 6px 18px rgba(12, 56, 39, 0.18)',
+    backgroundColor: '#1B5E20',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
   },
-  title: { fontSize: '17px', fontWeight: '800', color: '#1E293B', margin: 0 },
-  subtitle: { fontSize: '11.5px', color: '#64748B', margin: '2px 0 0 0' },
-  closeBtn: { background: 'none', border: 'none', cursor: 'pointer', padding: '4px' },
-  tabs: { display: 'flex', borderBottom: '1px solid #F1F5F9' },
-  tab: {
-    flex: 1,
-    padding: '12px',
+  title: {
+    margin: 0,
+    fontSize: '18px',
+    fontWeight: 700,
+    color: '#0F172A',
+  },
+  subtitle: {
+    margin: '2px 0 0',
+    fontSize: '12px',
+    color: '#64748B',
+  },
+  closeBtn: {
+    background: '#F1F5F9',
     border: 'none',
-    background: 'none',
-    fontSize: '13px',
-    fontWeight: '600',
-    color: '#94A3B8',
+    borderRadius: '50%',
+    width: '32px',
+    height: '32px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
     cursor: 'pointer',
   },
-  tabActive: {
-    color: '#0C3827',
-    borderBottom: '2px solid #0C3827',
+  form: {
+    padding: '22px 24px 16px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '16px',
   },
-  form: { padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' },
-  errorBox: {
-    backgroundColor: '#FEF2F2',
-    color: '#DC2626',
-    border: '1px solid #FECACA',
-    borderRadius: '10px',
-    padding: '10px 14px',
-    fontSize: '12.5px',
-    fontWeight: '600',
+  field: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '6px',
   },
-  field: { display: 'flex', flexDirection: 'column', gap: '6px' },
-  label: { fontSize: '12px', fontWeight: '700', color: '#334155' },
+  label: {
+    fontSize: '12px',
+    fontWeight: 600,
+    color: '#334155',
+  },
   inputWrapper: {
     display: 'flex',
     alignItems: 'center',
     gap: '10px',
-    backgroundColor: '#F8FAFC',
-    border: '1px solid #CBD5E1',
+    padding: '11px 14px',
     borderRadius: '12px',
-    padding: '10px 14px',
+    border: '1px solid #CBD5E1',
+    backgroundColor: '#F8FAFC',
   },
   input: {
-    border: 'none', outline: 'none',
-    backgroundColor: 'transparent',
-    fontSize: '13.5px', color: '#1E293B', width: '100%',
+    border: 'none',
+    outline: 'none',
+    background: 'transparent',
+    width: '100%',
+    fontSize: '14px',
+    color: '#0F172A',
+  },
+  errorBox: {
+    padding: '10px 12px',
+    borderRadius: '10px',
+    backgroundColor: '#FEF2F2',
+    color: '#B91C1C',
+    fontSize: '13px',
+    border: '1px solid #FECACA',
   },
   submitBtn: {
-    background: 'linear-gradient(135deg, #0C3827 0%, #134E37 100%)',
-    color: '#FFFFFF',
+    marginTop: '4px',
+    padding: '13px 16px',
+    borderRadius: '12px',
     border: 'none',
-    borderRadius: '14px',
-    padding: '13px',
+    backgroundColor: '#1B5E20',
+    color: '#FFFFFF',
     fontSize: '14px',
-    fontWeight: '700',
+    fontWeight: 600,
     cursor: 'pointer',
-    marginTop: '6px',
-    boxShadow: '0 6px 16px rgba(12, 56, 39, 0.24)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     gap: '8px',
   },
   noteText: {
-    fontSize: '11px',
-    color: '#94A3B8',
-    textAlign: 'center',
-    padding: '12px 24px 20px',
     margin: 0,
+    padding: '0 24px 22px',
+    fontSize: '12px',
+    color: '#64748B',
+    textAlign: 'center',
   },
 };

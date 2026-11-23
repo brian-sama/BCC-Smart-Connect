@@ -117,6 +117,17 @@ export const bccApi = {
     return data;
   },
 
+  async createStaffAccount({ first_name, last_name, email, phone, password, role }) {
+    return apiFetch('/api/auth/staff', {
+      method: 'POST',
+      body: JSON.stringify({ first_name, last_name, email, phone, password, role }),
+    });
+  },
+
+  async getStaffAccounts() {
+    return apiFetch('/api/auth/staff');
+  },
+
   logout() {
     setToken(null);
     setUser(null);
