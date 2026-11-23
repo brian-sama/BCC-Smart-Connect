@@ -102,6 +102,12 @@ export default function App() {
     bccApi.logout();
     setIncidents([]);
     setTeams([]);
+    setCurrentTab('dashboard');
+    setSelectedIncident(null);
+    setIsMapOpen(false);
+    setIsBroadcastOpen(false);
+    setIsWhatsAppOpen(false);
+    setIsCreateStaffOpen(false);
     setCurrentUser(null);
   };
 
@@ -113,11 +119,20 @@ export default function App() {
         fullScreen={true}
         onLogin={(userData) => {
           setCurrentUser(userData);
+          setCurrentTab('dashboard');
           setSessionVersion((v) => v + 1);
         }}
       />
     );
   }
+
+  const isAdmin = currentUser.role === 'Administrator';
+  const canDispatch = isAdmin || currentUser.role === 'Dispatcher';
+  const canComms = isAdmin || currentUser.role === 'Communications';
+  const activeTab =
+    (!canDispatch && (currentTab === 'incidents' || currentTab === 'teams'))
+      ? 'dashboard'
+      : currentTab;
 
   // 2. Incident Update Handler (Persisted to Cloud)
   const handleUpdateStatus = async (id, updates) => {
@@ -164,15 +179,17 @@ export default function App() {
     <div style={styles.layout}>
       {/* 1. Left Sidebar */}
       <Sidebar
-        currentTab={currentTab}
+        currentTab={activeTab}
+        userRole={currentUser.role}
         onSelectTab={(tab) => {
-          if (tab === 'map') setIsMapOpen(true);
-          else if (tab === 'login') setIsLoginOpen(true);
+          if (tab === 'map' && canDispatch) setIsMapOpen(true);
           else setCurrentTab(tab);
         }}
-        onOpenMap={() => setIsMapOpen(true)}
-        onOpenBroadcast={() => setIsBroadcastOpen(true)}
-        onOpenWhatsApp={() => setIsWhatsAppOpen(true)}
+        onOpenMap={() => canDispatch && setIsMapOpen(true)}
+        onOpenBroadcast={() => canComms && setIsBroadcastOpen(true)}
+        onOpenWhatsApp={() => canComms && setIsWhatsAppOpen(true)}
+        onOpenCreateStaff={() => isAdmin && setIsCreateStaffOpen(true)}
+        onLogout={handleLogout}
       />
 
       {/* 2. Main Content Area */}
@@ -181,11 +198,11 @@ export default function App() {
         <TopBar
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
-          onOpenBroadcast={() => setIsBroadcastOpen(true)}
-          onOpenMap={() => setIsMapOpen(true)}
-          onOpenWhatsApp={() => setIsWhatsAppOpen(true)}
+          onOpenBroadcast={() => canComms && setIsBroadcastOpen(true)}
+          onOpenMap={() => canDispatch && setIsMapOpen(true)}
+          onOpenWhatsApp={() => canComms && setIsWhatsAppOpen(true)}
           currentUser={currentUser}
-          onOpenLogin={() => setIsLoginOpen(true)}
+          onLogout={handleLogout}
         />
 
         {/* Emergency Alert Banner if triggered */}
@@ -224,35 +241,35 @@ export default function App() {
               {dataError}
             </div>
           )}
-          {currentTab === 'dashboard' && (
+          {activeTab === 'dashboard' && (
             <>
               {/* Dashboard Title & Actions Header */}
               <div style={styles.canvasHeader}>
                 <div>
                   <h1 style={styles.canvasTitle}>Dashboard</h1>
                   <p style={styles.canvasSubtitle}>
-                    Incident reports currently returned by the service API. Emergency dispatch and aggregate reporting are not configured.
+                    Signed in as <strong>{currentUser.role}</strong> — showing tools and views authorized for your role.
                   </p>
                 </div>
                 <div style={styles.headerActions}>
-                  {currentUser.role === 'Administrator' && (
+                  {isAdmin && (
                     <button style={styles.secondaryActionBtn} onClick={() => setIsCreateStaffOpen(true)}>
                       <UserPlus size={16} />
                       <span>Create Staff</span>
                     </button>
                   )}
-                  <button style={styles.primaryActionBtn} onClick={() => setIsBroadcastOpen(true)}>
-                    <Plus size={16} />
-                    <span>+ Notice Draft</span>
-                  </button>
-                  <button style={styles.secondaryActionBtn} onClick={() => setIsMapOpen(true)}>
-                    <MapPin size={16} />
-                    <span>Live Map View</span>
-                  </button>
-                  <button style={styles.secondaryActionBtn} onClick={handleLogout} title="Sign Out">
-                    <LogOut size={16} />
-                    <span>Sign Out</span>
-                  </button>
+                  {canComms && (
+                    <button style={styles.primaryActionBtn} onClick={() => setIsBroadcastOpen(true)}>
+                      <Plus size={16} />
+                      <span>+ Notice Draft</span>
+                    </button>
+                  )}
+                  {canDispatch && (
+                    <button style={styles.secondaryActionBtn} onClick={() => setIsMapOpen(true)}>
+                      <MapPin size={16} />
+                      <span>Live Map View</span>
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -301,15 +318,15 @@ export default function App() {
 
               {/* ROW 3: Bottom Section (3 Column Grid) */}
               <div style={styles.bottomGrid}>
-                <FieldTeamsCard teams={teams} />
+                {canDispatch && <FieldTeamsCard teams={teams} />}
                 <ResolutionGaugeCard />
                 <ResponseTimerCard />
               </div>
             </>
           )}
 
-          {/* TAB 2: Dedicated Incident Queue View */}
-          {currentTab === 'incidents' && (
+          {/* TAB 2: Dedicated Incident Queue View (Dispatcher & Administrator only) */}
+          {activeTab === 'incidents' && canDispatch && (
             <IncidentQueueView
               incidents={filteredIncidents}
               onSelectIncident={setSelectedIncident}
@@ -317,12 +334,12 @@ export default function App() {
           )}
 
           {/* TAB 3: Dedicated Analytics & SLA View */}
-          {currentTab === 'analytics' && (
+          {activeTab === 'analytics' && (
             <AnalyticsView incidents={incidents} />
           )}
 
-          {/* TAB 4: Dedicated Field Teams View */}
-          {currentTab === 'teams' && (
+          {/* TAB 4: Dedicated Field Teams View (Dispatcher & Administrator only) */}
+          {activeTab === 'teams' && canDispatch && (
             <FieldTeamsView
               teams={teams}
               incidents={incidents}

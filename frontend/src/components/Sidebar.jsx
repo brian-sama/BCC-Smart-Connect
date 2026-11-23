@@ -7,14 +7,26 @@ import {
   Users,
   BellRing,
   Settings,
-  HelpCircle,
   LogOut,
   Smartphone,
-  ShieldAlert,
-  MessageCircle
+  MessageCircle,
+  UserPlus
 } from 'lucide-react';
 
-export default function Sidebar({ currentTab, onSelectTab, onOpenMap, onOpenBroadcast, onOpenWhatsApp }) {
+export default function Sidebar({
+  currentTab,
+  onSelectTab,
+  onOpenMap,
+  onOpenBroadcast,
+  onOpenWhatsApp,
+  onOpenCreateStaff,
+  onLogout,
+  userRole,
+}) {
+  const isAdmin = userRole === 'Administrator';
+  const canDispatch = isAdmin || userRole === 'Dispatcher';
+  const canComms = isAdmin || userRole === 'Communications';
+
   return (
     <aside style={styles.sidebar}>
       {/* Brand Header */}
@@ -41,23 +53,27 @@ export default function Sidebar({ currentTab, onSelectTab, onOpenMap, onOpenBroa
             <span>Dashboard</span>
           </button>
 
-          <button
-            style={currentTab === 'map' ? styles.navItemActive : styles.navItem}
-            onClick={() => onOpenMap()}
-          >
-            <MapPin size={19} />
-            <span>Live GIS Map</span>
-            <span style={styles.pillBadge}>LIVE</span>
-          </button>
+          {canDispatch && (
+            <button
+              style={currentTab === 'map' ? styles.navItemActive : styles.navItem}
+              onClick={() => onOpenMap()}
+            >
+              <MapPin size={19} />
+              <span>Live GIS Map</span>
+              <span style={styles.pillBadge}>LIVE</span>
+            </button>
+          )}
 
-          <button
-            style={currentTab === 'incidents' ? styles.navItemActive : styles.navItem}
-            onClick={() => onSelectTab('incidents')}
-          >
-            {currentTab === 'incidents' && <span style={styles.activeIndicator} />}
-            <ClipboardList size={19} />
-            <span>Incident Queue</span>
-          </button>
+          {canDispatch && (
+            <button
+              style={currentTab === 'incidents' ? styles.navItemActive : styles.navItem}
+              onClick={() => onSelectTab('incidents')}
+            >
+              {currentTab === 'incidents' && <span style={styles.activeIndicator} />}
+              <ClipboardList size={19} />
+              <span>Incident Queue</span>
+            </button>
+          )}
 
           <button
             style={currentTab === 'analytics' ? styles.navItemActive : styles.navItem}
@@ -68,50 +84,62 @@ export default function Sidebar({ currentTab, onSelectTab, onOpenMap, onOpenBroa
             <span>Analytics & SLA</span>
           </button>
 
-          <button
-            style={currentTab === 'teams' ? styles.navItemActive : styles.navItem}
-            onClick={() => onSelectTab('teams')}
-          >
-            {currentTab === 'teams' && <span style={styles.activeIndicator} />}
-            <Users size={19} />
-            <span>Field Teams</span>
-          </button>
+          {canDispatch && (
+            <button
+              style={currentTab === 'teams' ? styles.navItemActive : styles.navItem}
+              onClick={() => onSelectTab('teams')}
+            >
+              {currentTab === 'teams' && <span style={styles.activeIndicator} />}
+              <Users size={19} />
+              <span>Field Teams</span>
+            </button>
+          )}
         </nav>
       </div>
 
-      {/* General Settings */}
+      {/* Role-scoped Communication & Admin Controls */}
       <div style={styles.menuGroup}>
-        <span style={styles.groupLabel}>COMMUNICATION & SYSTEM</span>
+        <span style={styles.groupLabel}>
+          {isAdmin ? 'ADMIN & COMMUNICATIONS' : canComms ? 'COMMUNICATIONS' : 'ACCOUNT'}
+        </span>
         <nav style={styles.navList}>
-          <button style={styles.navItem} onClick={() => onOpenBroadcast()}>
-            <BellRing size={19} />
-            <span>Notice Draft</span>
-          </button>
+          {canComms && (
+            <button style={styles.navItem} onClick={() => onOpenBroadcast()}>
+              <BellRing size={19} />
+              <span>Notice Draft</span>
+            </button>
+          )}
+
+          {canComms && (
+            <button
+              style={{ ...styles.navItem, color: '#166534', backgroundColor: '#F0FDF4' }}
+              onClick={() => onOpenWhatsApp && onOpenWhatsApp()}
+            >
+              <MessageCircle size={19} color="#25D366" />
+              <span style={{ fontWeight: '700' }}>Verified Contacts</span>
+            </button>
+          )}
+
+          {isAdmin && (
+            <button style={styles.navItem} onClick={() => onOpenCreateStaff && onOpenCreateStaff()}>
+              <UserPlus size={19} />
+              <span>Create Staff Account</span>
+            </button>
+          )}
+
+          {isAdmin && (
+            <button style={styles.navItem} onClick={() => onSelectTab('analytics')}>
+              <Settings size={19} />
+              <span>System Status</span>
+            </button>
+          )}
 
           <button
-            style={{ ...styles.navItem, color: '#166534', backgroundColor: '#F0FDF4' }}
-            onClick={() => onOpenWhatsApp && onOpenWhatsApp()}
+            style={{ ...styles.navItem, color: '#B91C1C', backgroundColor: '#FEF2F2', marginTop: '6px' }}
+            onClick={() => onLogout && onLogout()}
           >
-            <MessageCircle size={19} color="#25D366" />
-            <span style={{ fontWeight: '700' }}>Verified Contacts</span>
-          </button>
-
-          <button style={styles.navItem} onClick={() => onSelectTab('analytics')}>
-            <Settings size={19} />
-            <span>System Status</span>
-          </button>
-
-          <button
-            style={styles.navItem}
-            onClick={() => onOpenWhatsApp && onOpenWhatsApp()}
-          >
-            <HelpCircle size={19} />
-            <span>Contact directory</span>
-          </button>
-
-          <button style={styles.navItem} onClick={() => onSelectTab('login')}>
-            <LogOut size={19} />
-            <span>Switch Staff / Sign In</span>
+            <LogOut size={19} color="#DC2626" />
+            <span>Logout</span>
           </button>
         </nav>
       </div>

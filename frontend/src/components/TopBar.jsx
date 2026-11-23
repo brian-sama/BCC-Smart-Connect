@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, Bell, Mail, ChevronDown, Radio, MessageCircle } from 'lucide-react';
+import { Search, Bell, Mail, Radio, MessageCircle, LogOut } from 'lucide-react';
 
 export default function TopBar({
   searchQuery,
@@ -8,13 +8,12 @@ export default function TopBar({
   onOpenMap,
   onOpenWhatsApp,
   currentUser,
-  onOpenLogin,
-  isLive = true
+  onLogout,
 }) {
-  const user = currentUser || {
-    name: 'Eng. S. Khumalo',
-    role: 'Chief Dispatcher',
-  };
+  const user = currentUser || { name: 'Staff User', role: 'Dispatcher' };
+  const isAdmin = user.role === 'Administrator';
+  const canDispatch = isAdmin || user.role === 'Dispatcher';
+  const canComms = isAdmin || user.role === 'Communications';
 
   return (
     <header style={styles.header}>
@@ -38,38 +37,51 @@ export default function TopBar({
           <span style={styles.liveText}>Live Cloud Sync</span>
         </div>
 
-        {/* WhatsApp Hub Button */}
-        <button
-          style={{ ...styles.iconBtn, backgroundColor: '#F0FDF4', borderColor: '#BBF7D0' }}
-          onClick={onOpenWhatsApp}
-          title="WhatsApp Channels & Ward Groups"
-        >
-          <MessageCircle size={18} color="#25D366" />
-        </button>
+        {/* WhatsApp Hub Button (Communications & Administrator only) */}
+        {canComms && (
+          <button
+            style={{ ...styles.iconBtn, backgroundColor: '#F0FDF4', borderColor: '#BBF7D0' }}
+            onClick={onOpenWhatsApp}
+            title="WhatsApp Channels & Ward Groups"
+          >
+            <MessageCircle size={18} color="#25D366" />
+          </button>
+        )}
 
-        {/* Action Icon Buttons */}
-        <button style={styles.iconBtn} onClick={onOpenBroadcast} title="Send Broadcast Alert">
-          <Mail size={18} color="#64748B" />
-        </button>
+        {/* Broadcast Button (Communications & Administrator only) */}
+        {canComms && (
+          <button style={styles.iconBtn} onClick={onOpenBroadcast} title="Send Broadcast Alert">
+            <Mail size={18} color="#64748B" />
+          </button>
+        )}
 
-        <button style={styles.iconBtn} onClick={onOpenMap} title="Active Incident Map">
-          <Bell size={18} color="#64748B" />
-          <span style={styles.notificationDot} />
-        </button>
+        {/* Live Map Button (Dispatcher & Administrator only) */}
+        {canDispatch && (
+          <button style={styles.iconBtn} onClick={onOpenMap} title="Active Incident Map">
+            <Bell size={18} color="#64748B" />
+            <span style={styles.notificationDot} />
+          </button>
+        )}
 
         {/* User Profile */}
-        <div style={styles.profileBox} onClick={onOpenLogin} title="Click to switch user account">
-          <img
-            src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&h=120&q=80"
-            alt="Dispatcher"
-            style={styles.avatarImg}
-          />
+        <div style={styles.profileBox}>
+          <div style={styles.avatarInitials}>
+            {(user.name || 'S').slice(0, 1).toUpperCase()}
+          </div>
           <div style={styles.profileText}>
             <span style={styles.profileName}>{user.name}</span>
             <span style={styles.profileRole}>{user.role}</span>
           </div>
-          <ChevronDown size={16} color="#94A3B8" />
         </div>
+
+        {/* Clean Logout Button */}
+        <button
+          style={{ ...styles.iconBtn, backgroundColor: '#FEF2F2', borderColor: '#FECACA' }}
+          onClick={onLogout}
+          title="Logout"
+        >
+          <LogOut size={17} color="#DC2626" />
+        </button>
       </div>
     </header>
   );
@@ -153,14 +165,18 @@ const styles = {
     alignItems: 'center',
     gap: '10px',
     paddingLeft: '8px',
-    cursor: 'pointer',
   },
-  avatarImg: {
-    width: '38px',
-    height: '38px',
+  avatarInitials: {
+    width: '36px',
+    height: '36px',
     borderRadius: '50%',
-    objectFit: 'cover',
-    border: '2px solid #0C3827',
+    backgroundColor: '#0C3827',
+    color: '#FFFFFF',
+    fontSize: '14px',
+    fontWeight: '700',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   profileText: {
     display: 'flex',
