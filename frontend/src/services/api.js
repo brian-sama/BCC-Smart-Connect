@@ -167,6 +167,16 @@ export const bccApi = {
     });
   },
 
+  async getIncidentPhotoBlobUrl(incidentId) {
+    const token = getToken();
+    const res = await fetch(`${API_BASE}/api/incidents/${incidentId}/media`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return URL.createObjectURL(blob);
+  },
+
   // ── Field Teams ────────────────────────────────────────────────────────────
   async getFieldTeams() {
     const data = await apiFetch('/api/teams');

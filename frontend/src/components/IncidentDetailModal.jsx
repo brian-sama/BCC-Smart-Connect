@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { X, CheckCircle, AlertTriangle, UserCheck, Clock, MapPin, Phone } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, CheckCircle, AlertTriangle, Clock, MapPin, Phone, Compass, Image as ImageIcon, ExternalLink } from 'lucide-react';
+import { bccApi } from '../services/api';
 
 export default function IncidentDetailModal({ incident, onClose, onUpdateStatus }) {
   const [status, setStatus] = useState(incident.status);
@@ -7,6 +8,36 @@ export default function IncidentDetailModal({ incident, onClose, onUpdateStatus 
   const [assignedTo, setAssignedTo] = useState(incident.assigned_to_name || '');
   const [notes, setNotes] = useState(incident.resolution_notes || '');
   const [isSaving, setIsSaving] = useState(false);
+  const [photoSrc, setPhotoSrc] = useState(null);
+  const [photoLoading, setPhotoLoading] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    let objectUrl = null;
+    if (incident.photo_url) {
+      setPhotoLoading(true);
+      bccApi
+        .getIncidentPhotoBlobUrl(incident.id)
+        .then((url) => {
+          objectUrl = url;
+          if (active) setPhotoSrc(url);
+        })
+        .catch(() => {
+          if (active) setPhotoSrc(null);
+        })
+        .finally(() => {
+          if (active) setPhotoLoading(false);
+        });
+    } else {
+      setPhotoSrc(null);
+    }
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [incident.id, incident.photo_url]);
+
+  const hasCoords = incident.lat != null && incident.lng != null && !Number.isNaN(Number(incident.lat)) && !Number.isNaN(Number(incident.lng));
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -76,6 +107,54 @@ export default function IncidentDetailModal({ incident, onClose, onUpdateStatus 
                 </p>
               </div>
             </div>
+
+            <div style={{ ...styles.metaItem, gridColumn: '1 / -1' }}>
+              <Compass size={16} color="#0C3827" />
+              <div style={{ flex: 1 }}>
+                <span style={styles.metaLabel}>GIS Coordinates (WGS84 / PostGIS)</span>
+                {hasCoords ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginTop: '2px' }}>
+                    <span style={{ ...styles.metaValue, fontFamily: 'monospace' }}>
+                      Lat: {Number(incident.lat).toFixed(6)}, Lng: {Number(incident.lng).toFixed(6)}
+                    </span>
+                    <a
+                      href={`https://www.google.com/maps?q=${Number(incident.lat)},${Number(incident.lng)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ fontSize: '12px', fontWeight: 700, color: '#1B5E20', display: 'inline-flex', alignItems: 'center', gap: '4px', textDecoration: 'none' }}
+                    >
+                      <span>Open in Google Maps</span>
+                      <ExternalLink size={12} />
+                    </a>
+                  </div>
+                ) : (
+                  <p style={styles.metaValue}>No GIS coordinates recorded</p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Attached Photo Evidence */}
+          <div style={{ marginTop: '14px', padding: '12px 14px', borderRadius: '14px', backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+              <ImageIcon size={16} color="#0C3827" />
+              <span style={styles.metaLabel}>Attached Photo Evidence</span>
+            </div>
+            {photoLoading ? (
+              <p style={{ margin: 0, fontSize: '13px', color: '#64748B' }}>Loading photo evidence...</p>
+            ) : photoSrc ? (
+              <a href={photoSrc} target="_blank" rel="noreferrer" title="Open full image">
+                <img
+                  src={photoSrc}
+                  alt="Incident evidence"
+                  style={{ width: '100%', maxHeight: '220px', objectFit: 'cover', borderRadius: '10px', border: '1px solid #CBD5E1', display: 'block' }}
+                />
+              </a>
+            ) : (
+              <p style={{ margin: 0, fontSize: '13px', color: '#64748B' }}>
+                {incident.photo_url ? 'Photo attached, but file is no longer available on ephemeral storage.' : 'No photo was attached to this report.'}
+              </p>
+            )}
           </div>
 
           <hr style={styles.divider} />
