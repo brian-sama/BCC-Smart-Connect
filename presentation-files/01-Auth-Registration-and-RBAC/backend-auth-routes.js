@@ -9,7 +9,7 @@ const router = express.Router();
 
 function signTokens(user) {
   const payload = { id: user.id, email: user.email, role: user.role };
-  const access = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '15m' });
+  const access = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '24h' });
   const refresh = jwt.sign({ id: user.id }, process.env.JWT_REFRESH_SECRET, { expiresIn: '7d' });
   return { access, refresh };
 }
