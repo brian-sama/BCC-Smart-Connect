@@ -485,10 +485,10 @@ router.patch(
 );
 
 // ─── POST /api/incidents/:id/media — upload photo evidence ───────────────────
-// Staff may attach or replace evidence. Signed-in residents may attach one
-// image only to their own report; guests cannot upload until a secure upload
-// grant is available.
-router.post('/:id/media', authenticate, uploadSinglePhoto, async (req, res) => {
+// Staff may attach or replace evidence at any time. Signed-in residents and
+// anonymous/guest reporters may attach one image to a newly submitted report
+// within ANON_UPLOAD_WINDOW_MINUTES (30 min) if no photo is attached yet.
+router.post('/:id/media', optionalAuth, uploadSinglePhoto, async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No photo file provided.' });
   }
@@ -496,14 +496,11 @@ router.post('/:id/media', authenticate, uploadSinglePhoto, async (req, res) => {
     removeUploadedFile(req.file);
     return res.status(415).json({ error: 'The uploaded file content does not match a supported image.' });
   }
-  if (req.user.is_guest) {
-    removeUploadedFile(req.file);
-    return res.status(403).json({ error: 'Photo uploads require a registered account.' });
-  }
 
   const incidentId = req.params.id;
   const fileUrl = `/uploads/${req.file.filename}`;
   const isStaff = STAFF_ROLES.includes(req.user?.role);
+  const userId = req.user && !req.user.is_guest ? req.user.id : null;
 
   try {
     const { rows } = await pool.query(
@@ -511,10 +508,12 @@ router.post('/:id/media', authenticate, uploadSinglePhoto, async (req, res) => {
           SET photo_url = $1, updated_at = NOW()
         WHERE id = $2
           AND ($3::boolean
-               OR (reporter_id = $4 AND photo_url IS NULL
-                   AND created_at >= NOW() - ($5 || ' minutes')::interval))
+               OR (photo_url IS NULL
+                   AND created_at >= NOW() - ($5 || ' minutes')::interval
+                   AND ((reporter_id IS NOT NULL AND reporter_id = $4)
+                        OR (reporter_id IS NULL AND $4::uuid IS NULL))))
         RETURNING id`,
-      [fileUrl, incidentId, isStaff, req.user.id, String(ANON_UPLOAD_WINDOW_MINUTES)]
+      [fileUrl, incidentId, isStaff, userId, String(ANON_UPLOAD_WINDOW_MINUTES)]
     );
     if (!rows.length) {
       removeUploadedFile(req.file);

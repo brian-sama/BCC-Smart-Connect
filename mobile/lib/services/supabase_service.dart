@@ -285,8 +285,19 @@ class BccApiService {
     return null;
   }
 
-  /// Fetch citizen's own submitted reports (requires login)
+  /// Fetch citizen's own submitted reports (merges backend /incidents/my with locally saved reports
+  /// and refreshes status via /incidents/track/:ref so Guest & signed-in users always see live status)
   static Future<List<IncidentModel>> fetchMyReports() async {
+    final Map<String, IncidentModel> byRef = {};
+
+    // 1. Load any locally saved reports first
+    final local = await StorageService.getSavedReports();
+    for (final item in local) {
+      byRef[item.referenceNumber.toUpperCase()] = item;
+    }
+
+    // 2. Fetch signed-in user's reports from backend
+    final Set<String> refreshedFromServer = {};
     try {
       final headers = await _authHeaders();
       final res = await http
@@ -296,14 +307,53 @@ class BccApiService {
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body) as Map<String, dynamic>;
         final list = data['incidents'] as List<dynamic>? ?? [];
-        return list
-            .map((e) => IncidentModel.fromJson(e as Map<String, dynamic>))
-            .toList();
+        for (final e in list) {
+          final inc = IncidentModel.fromJson(e as Map<String, dynamic>);
+          final key = inc.referenceNumber.toUpperCase();
+          byRef[key] = inc;
+          refreshedFromServer.add(key);
+        }
       }
     } catch (_) {}
 
-    // Fall back to local cache
-    return StorageService.getSavedReports();
+    // 3. For any local-only reports (e.g. submitted as Guest), refresh live status via public track endpoint
+    for (final entry in byRef.entries.toList()) {
+      if (refreshedFromServer.contains(entry.key)) continue;
+      try {
+        final res = await http
+            .get(Uri.parse('$baseUrl/incidents/track/${entry.key}'))
+            .timeout(const Duration(seconds: 6));
+        if (res.statusCode == 200) {
+          final data = jsonDecode(res.body) as Map<String, dynamic>;
+          final remote = data['incident'] as Map<String, dynamic>?;
+          if (remote != null) {
+            final prev = entry.value;
+            byRef[entry.key] = IncidentModel(
+              id: remote['id']?.toString() ?? prev.id,
+              referenceNumber: prev.referenceNumber,
+              incidentType: remote['incident_type']?.toString() ?? prev.incidentType,
+              status: remote['status']?.toString() ?? prev.status,
+              description: prev.description,
+              address: prev.address,
+              lat: prev.lat,
+              lng: prev.lng,
+              isEmergency: prev.isEmergency,
+              createdAt: prev.createdAt,
+              resolutionNotes: prev.resolutionNotes,
+            );
+          }
+        }
+      } catch (_) {}
+    }
+
+    final merged = byRef.values.toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+    // Keep local storage in sync with latest statuses
+    for (final inc in merged) {
+      await StorageService.saveReport(inc);
+    }
+    return merged;
   }
 
   // ─── Bulletins & Feed ───────────────────────────────────────────────────────

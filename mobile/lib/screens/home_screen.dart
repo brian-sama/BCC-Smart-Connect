@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -21,11 +22,15 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _currentNavIndex = 0;
   String _selectedFilter = 'All';
+  String _statusFilter = 'All'; // 'All' | 'Active' | 'Resolved'
   bool _isBalanceVisible = true;
   List<IncidentModel> _reports = [];
   bool _isLoading = true;
   String _userName = 'Bulawayo Citizen';
   bool _isGuest = true;
+  Timer? _pollTimer;
+  final Map<String, String> _lastKnownStatuses = {};
+  final List<Map<String, String>> _statusNotifications = [];
 
   // ─── Bulletin & Unified Feed State ─────────────────────────────────────────
   String _bulletinCategory = 'All';
@@ -75,10 +80,16 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadReports();
     _loadUser();
     _loadBulletinFeed();
+    // Poll every 15 seconds so citizens receive live status updates & Resolved alerts
+    _pollTimer = Timer.periodic(
+      const Duration(seconds: 15),
+      (_) => _loadReports(silent: true),
+    );
   }
 
   @override
   void dispose() {
+    _pollTimer?.cancel();
     _bulletinSearchController.dispose();
     super.dispose();
   }
@@ -121,27 +132,149 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _loadReports() async {
-    setState(() => _isLoading = true);
+  Future<void> _loadReports({bool silent = false}) async {
+    if (!silent) setState(() => _isLoading = true);
+    List<IncidentModel> list;
     try {
-      // Load directly from backend
-      final list = await BccApiService.fetchMyReports();
-      if (mounted) {
-        setState(() {
-          _reports = list;
-          _isLoading = false;
-        });
-        return;
-      }
-    } catch (_) {}
-    // Fallback to locally saved reports on device (no dummy data)
-    final list = await StorageService.getSavedReports();
-    if (mounted) {
-      setState(() {
-        _reports = list;
-        _isLoading = false;
-      });
+      list = await BccApiService.fetchMyReports();
+    } catch (_) {
+      list = await StorageService.getSavedReports();
     }
+    if (!mounted) return;
+
+    // Detect newly resolved or updated complaints and notify the user
+    final List<IncidentModel> newlyResolved = [];
+    for (final inc in list) {
+      final prevStatus = _lastKnownStatuses[inc.referenceNumber];
+      if (prevStatus != null && prevStatus != inc.status) {
+        final isNowResolved = inc.status == 'Resolved' || inc.status == 'Closed';
+        _statusNotifications.insert(0, {
+          'ref': inc.referenceNumber,
+          'title': isNowResolved
+              ? 'Complaint Resolved: ${inc.readableType}'
+              : 'Status Updated: ${inc.readableType}',
+          'body': isNowResolved
+              ? 'Your report ${inc.referenceNumber} has been marked ${inc.status} by BCC staff.'
+              : 'Your report ${inc.referenceNumber} moved from $prevStatus to ${inc.status}.',
+          'time': TimeOfDay.now().format(context),
+        });
+        if (isNowResolved) newlyResolved.add(inc);
+      }
+      _lastKnownStatuses[inc.referenceNumber] = inc.status;
+    }
+
+    setState(() {
+      _reports = list;
+      _isLoading = false;
+    });
+
+    if (newlyResolved.isNotEmpty) {
+      final latest = newlyResolved.first;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: BccColors.statusResolved,
+          duration: const Duration(seconds: 6),
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle_rounded, color: Colors.white),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Issue Resolved! ${latest.readableType} (${latest.referenceNumber}) has been resolved by BCC.',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+          action: SnackBarAction(
+            label: 'TRACK',
+            textColor: Colors.white,
+            onPressed: () => _openTrackModal(latest.referenceNumber),
+          ),
+        ),
+      );
+    }
+  }
+
+  void _openNotificationsSheet() {
+    final resolvedReports = _reports
+        .where((r) => r.status == 'Resolved' || r.status == 'Closed')
+        .toList();
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Complaint Notifications',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: BccColors.textDark),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close_rounded),
+                  onPressed: () => Navigator.pop(ctx),
+                ),
+              ],
+            ),
+            const Divider(),
+            if (_statusNotifications.isEmpty && resolvedReports.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Center(
+                  child: Text(
+                    'No resolved complaint alerts yet. Pull down to refresh.',
+                    style: TextStyle(color: BccColors.textMuted, fontSize: 13),
+                  ),
+                ),
+              )
+            else
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    ..._statusNotifications.map((n) => ListTile(
+                          leading: const CircleAvatar(
+                            backgroundColor: BccColors.statusResolvedSoft,
+                            child: Icon(Icons.check_circle_rounded, color: BccColors.statusResolved),
+                          ),
+                          title: Text(n['title'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
+                          subtitle: Text(n['body'] ?? '', style: const TextStyle(fontSize: 12)),
+                          trailing: Text(n['time'] ?? '', style: const TextStyle(fontSize: 11, color: BccColors.textMuted)),
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            if (n['ref'] != null) _openTrackModal(n['ref']);
+                          },
+                        )),
+                    if (_statusNotifications.isEmpty)
+                      ...resolvedReports.map((r) => ListTile(
+                            leading: const CircleAvatar(
+                              backgroundColor: BccColors.statusResolvedSoft,
+                              child: Icon(Icons.check_circle_rounded, color: BccColors.statusResolved),
+                            ),
+                            title: Text('Resolved: ${r.readableType}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
+                            subtitle: Text('${r.referenceNumber} • ${r.resolutionNotes ?? 'Marked Resolved by BCC staff.'}', style: const TextStyle(fontSize: 12)),
+                            onTap: () {
+                              Navigator.pop(ctx);
+                              _openTrackModal(r.referenceNumber);
+                            },
+                          )),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _openReportModal([String? initialCategory]) async {
@@ -194,20 +327,22 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   List<IncidentModel> get _filteredReports {
-    if (_selectedFilter == 'All') return _reports;
+    Iterable<IncidentModel> list = _reports;
+    if (_statusFilter == 'Active') {
+      list = list.where((r) => r.status != 'Resolved' && r.status != 'Closed');
+    } else if (_statusFilter == 'Resolved') {
+      list = list.where((r) => r.status == 'Resolved' || r.status == 'Closed');
+    }
     if (_selectedFilter == 'Water') {
-      return _reports.where((r) => r.incidentType == 'WaterLeak').toList();
+      list = list.where((r) => r.incidentType == 'WaterLeak');
+    } else if (_selectedFilter == 'Sewer') {
+      list = list.where((r) => r.incidentType == 'SewerBurst');
+    } else if (_selectedFilter == 'Roads') {
+      list = list.where((r) => r.incidentType == 'RoadDamage');
+    } else if (_selectedFilter == 'Lighting') {
+      list = list.where((r) => r.incidentType == 'StreetLight');
     }
-    if (_selectedFilter == 'Sewer') {
-      return _reports.where((r) => r.incidentType == 'SewerBurst').toList();
-    }
-    if (_selectedFilter == 'Roads') {
-      return _reports.where((r) => r.incidentType == 'RoadDamage').toList();
-    }
-    if (_selectedFilter == 'Lighting') {
-      return _reports.where((r) => r.incidentType == 'StreetLight').toList();
-    }
-    return _reports;
+    return list.toList();
   }
 
   @override
@@ -1025,35 +1160,40 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ),
-              // Frosted Notification Bell Pill with green dot indicator
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    const Icon(
-                      Icons.notifications_none_rounded,
-                      color: Colors.white,
-                      size: 22,
-                    ),
-                    Positioned(
-                      top: 10,
-                      right: 12,
-                      child: Container(
-                        width: 8,
-                        height: 8,
-                        decoration: const BoxDecoration(
-                          color: BccColors.accentLime,
-                          shape: BoxShape.circle,
-                        ),
+              // Frosted Notification Bell Pill with live resolved badge
+              GestureDetector(
+                onTap: _openNotificationsSheet,
+                child: Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      const Icon(
+                        Icons.notifications_none_rounded,
+                        color: Colors.white,
+                        size: 22,
                       ),
-                    ),
-                  ],
+                      if (_statusNotifications.isNotEmpty ||
+                          _reports.any((r) => r.status == 'Resolved' || r.status == 'Closed'))
+                        Positioned(
+                          top: 10,
+                          right: 12,
+                          child: Container(
+                            width: 9,
+                            height: 9,
+                            decoration: const BoxDecoration(
+                              color: BccColors.accentLime,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -1079,7 +1219,9 @@ class _HomeScreenState extends State<HomeScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(
-                _isBalanceVisible ? '$activeCount Active Faults' : '••••••••',
+                _isBalanceVisible
+                    ? '$activeCount Active ${activeCount == 1 ? 'Fault' : 'Faults'}'
+                    : '••••••••',
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 28,
@@ -1100,6 +1242,17 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 6),
+          Center(
+            child: Text(
+              '${_reports.where((r) => r.status == 'Resolved' || r.status == 'Closed').length} Resolved  •  ${_reports.length} Total Complaints',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.8),
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ),
 
           const SizedBox(height: 18),
@@ -1374,9 +1527,9 @@ class _HomeScreenState extends State<HomeScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text(
-              'Recent Reports',
-              style: TextStyle(
+            Text(
+              'My Complaints (${_reports.length})',
+              style: const TextStyle(
                 fontSize: 17,
                 fontWeight: FontWeight.bold,
                 color: BccColors.textDark,
@@ -1394,6 +1547,26 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: ['All', 'Active', 'Resolved'].map((tab) {
+            final selected = _statusFilter == tab;
+            return Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: ChoiceChip(
+                label: Text(tab),
+                selected: selected,
+                selectedColor: BccColors.primaryForest,
+                labelStyle: TextStyle(
+                  color: selected ? Colors.white : BccColors.textDark,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                ),
+                onSelected: (_) => setState(() => _statusFilter = tab),
+              ),
+            );
+          }).toList(),
         ),
         const SizedBox(height: 12),
         if (_isLoading)
@@ -1528,20 +1701,33 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
 
-            // Reference & Status Pill
+            // Reference & Status Pill (clearly shows Resolved vs Unresolved)
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
                   item.referenceNumber,
                   style: const TextStyle(
-                    fontSize: 12,
+                    fontSize: 11,
                     fontWeight: FontWeight.bold,
                     color: BccColors.textDark,
                   ),
                 ),
                 const SizedBox(height: 4),
                 _buildStatusPill(item.status),
+                const SizedBox(height: 2),
+                Text(
+                  (item.status == 'Resolved' || item.status == 'Closed')
+                      ? 'Resolved ✓'
+                      : 'Not Resolved',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: (item.status == 'Resolved' || item.status == 'Closed')
+                        ? BccColors.statusResolved
+                        : BccColors.textMuted,
+                  ),
+                ),
               ],
             ),
           ],
