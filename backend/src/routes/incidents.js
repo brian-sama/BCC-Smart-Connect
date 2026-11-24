@@ -56,7 +56,9 @@ const upload = multer({
   // extra byte: exactly 5 MB passes, 5 MB + 1 byte is rejected (FR10)
   limits: { fileSize: MAX_PHOTO_BYTES + 1, files: 1 },
   fileFilter: (_req, file, cb) => {
-    if (ALLOWED_PHOTO_TYPES.includes(file.mimetype)) {
+    // Flutter's http.MultipartFile.fromPath defaults to application/octet-stream;
+    // allow it through here and verify actual image magic bytes in hasValidImageSignature().
+    if (ALLOWED_PHOTO_TYPES.includes(file.mimetype) || file.mimetype === 'application/octet-stream') {
       cb(null, true);
     } else {
       const err = new Error('Only JPEG, PNG, WebP or HEIC photos are accepted.');
@@ -86,13 +88,17 @@ function removeUploadedFile(file) {
 
 function hasValidImageSignature(file) {
   const bytes = fs.readFileSync(file.path).subarray(0, 12);
+  const isJpeg = bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  const isPng  = bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  const isWebp = bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP';
+  const isHeic = bytes.toString('ascii', 4, 8) === 'ftyp' && /^(heic|heix|hevc|hevx|mif1|msf1)$/.test(bytes.toString('ascii', 8, 12));
+
   const mime = file.mimetype;
-  if (mime === 'image/jpeg') return bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
-  if (mime === 'image/png') return bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
-  if (mime === 'image/webp') return bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP';
-  if (mime === 'image/heic' || mime === 'image/heif') {
-    return bytes.toString('ascii', 4, 8) === 'ftyp' && /^(heic|heix|hevc|hevx|mif1|msf1)$/.test(bytes.toString('ascii', 8, 12));
-  }
+  if (mime === 'application/octet-stream') return isJpeg || isPng || isWebp || isHeic;
+  if (mime === 'image/jpeg') return isJpeg;
+  if (mime === 'image/png') return isPng;
+  if (mime === 'image/webp') return isWebp;
+  if (mime === 'image/heic' || mime === 'image/heif') return isHeic;
   return false;
 }
 
@@ -518,6 +524,8 @@ router.post('/:id/media', authenticate, uploadSinglePhoto, async (req, res) => {
         error: 'A photo can only be added to a new report once, shortly after it is submitted.',
       });
     }
+    const io = getIo();
+    if (io) io.to('admin').emit('incident:update', { id: incidentId, photo_url: fileUrl });
     res.status(201).json({ url: fileUrl });
   } catch (err) {
     removeUploadedFile(req.file);
