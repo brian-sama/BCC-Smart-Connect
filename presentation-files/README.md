@@ -39,3 +39,10 @@ This folder contains clearly labeled copies of the exact source files to walk ex
 ### `05-Automated-Testing/` — Live Runnable Test Suites
 - `unit-tests-jwt-and-rbac.test.js` — Run with `cd backend && npm run test:unit` (7 offline unit tests).
 - `live-e2e-integration-tests.test.js` — Run with `cd backend && npm run test:live` (10 non-destructive live end-to-end tests).
+
+### `06-Database-PostgreSQL-PostGIS/` — Live Cloud PostgreSQL/PostGIS Schema & Migrations
+- `000_core_schema_postgis.sql` — Core tables (`users`, `incidents`, `notifications`, PostGIS `GEOGRAPHY(Point, 4326)`).
+- `001_add_reporter_contact.sql` through `007_widen_reference_number.sql` — All 7 tracked schema migrations (timeline audit table, WhatsApp channels, PostGIS trigger, location provenance, review workflow, widened 40-char reference numbers).
+- `backend-db-pool.js` — PostgreSQL connection pool (`DATABASE_URL` pointing to live cloud Neon PostgreSQL).
+- `backend-migration-runner.js` — Checksummed, advisory-locked migration runner (`npm run migrate`).
+
